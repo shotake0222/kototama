@@ -4,15 +4,40 @@
   const scriptTag = document.getElementById('ar-embed-script');
   const clientId = scriptTag ? scriptTag.getAttribute('data-client-id') : 'direct';
 
-  // 💡 設定に PRICE_MIND_AR (デフォルト3000) を追加
-  let s = { PRICE_KEY_RING: 1500, PRICE_CHARM: 2800, PRICE_TEMPLATE: 500, PRICE_MIND_AR: 3000, PRICE_TAX: 0.1, PRICE_POSTAGE: 380 };
+  // 💡 DBから設定を取得（PRODUCT_ から始まるキーを動的に商品として抽出）
+  let s = { PRICE_TEMPLATE: 500, PRICE_MIND_AR: 3000, PRICE_TAX: 0.1, PRICE_POSTAGE: 380, PRICE_KEY_RING: 1500, PRICE_CHARM: 2800 };
+  let customProducts = [];
+  
   try {
     const res = await fetch('https://kototama.vercel.app/api/settings');
     if (res.ok) {
       const dbSettings = await res.json();
-      s = { ...s, ...dbSettings };
+      for (const key in dbSettings) {
+        if (key.startsWith('PRODUCT_')) {
+          // 例: PRODUCT_ACRYLIC = "アクリルスタンド,4500" のようにカンマ区切りで取得
+          const parts = String(dbSettings[key]).split(',');
+          if (parts.length >= 2) {
+            customProducts.push({ name: parts[0].trim(), price: Number(parts[1].trim()), key: key });
+          }
+        } else {
+          s[key] = Number(dbSettings[key]) || dbSettings[key];
+        }
+      }
     }
   } catch (e) { console.warn('設定の取得に失敗しました。デフォルト値を使用します。'); }
+
+  // カスタム商品が1つも登録されていない場合は、デフォルトの2つを表示
+  let products = customProducts.length > 0 ? customProducts : [
+    { name: 'キーホルダー', price: s.PRICE_KEY_RING, key: 'PRODUCT_KEY_RING' },
+    { name: 'リボンチャーム', price: s.PRICE_CHARM, key: 'PRODUCT_CHARM' }
+  ];
+
+  // 💡 商品のラジオボタンを動的に生成
+  let productRadiosHtml = '';
+  products.forEach((p, idx) => {
+    const checked = idx === 0 ? 'checked' : '';
+    productRadiosHtml += `<label class="kt-radio-label"><input type="radio" name="itemType" value="${p.name}" data-price="${p.price}" ${checked}> ${p.name} (${p.price.toLocaleString()}円)</label>`;
+  });
 
   const cropperCss = document.createElement('link');
   cropperCss.rel = 'stylesheet'; cropperCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css';
@@ -83,10 +108,9 @@
         <h3 class="kt-section-title">🎁 ご注文内容</h3>
         <div class="kt-form-body">
           <div class="kt-form-group">
-            <label class="kt-label">キーホルダーの種類 <span class="kt-req">必須</span></label>
+            <label class="kt-label">商品の種類 <span class="kt-req">必須</span></label>
             <div class="kt-radio-group">
-              <label class="kt-radio-label"><input type="radio" name="itemType" value="キーホルダー" checked> キーホルダー (${s.PRICE_KEY_RING.toLocaleString()}円)</label>
-              <label class="kt-radio-label"><input type="radio" name="itemType" value="リボンチャーム"> リボンチャーム (${s.PRICE_CHARM.toLocaleString()}円)</label>
+              ${productRadiosHtml}
             </div>
           </div>
           <div class="kt-form-group">
@@ -109,7 +133,6 @@
             <input type="text" id="kt-template-id" class="kt-input" placeholder="例：T-01" />
           </div>
 
-          <!-- 💡 【新機能】ARの再生モード（イメージトラッキング） -->
           <div class="kt-form-group" id="kt-ar-mode-group">
             <label class="kt-label">ARの再生モード <span class="kt-new">オススメ</span></label>
             <div class="kt-radio-group">
@@ -143,7 +166,6 @@
       </div>
     </div>
     
-    <!-- トリミング用モーダル -->
     <div id="kt-crop-modal" class="kt-modal-overlay">
       <div class="kt-modal-content">
         <h3 style="margin-top:0; color:#881337;">✂️ 画像のトリミング</h3>
@@ -185,32 +207,32 @@
     document.getElementById('kt-file-status').textContent = '※ 元画像を使用します';
   });
 
-  // 💡 金額計算とUI表示の更新（MindARオプションを加算）
   const updateFormState = () => {
-    const itemType = document.querySelector('input[name="itemType"]:checked').value;
+    // 💡 選択された商品の data-price 属性から動的に金額を取得
+    const selectedItem = document.querySelector('input[name="itemType"]:checked');
     const imageType = document.querySelector('input[name="imageType"]:checked').value;
     const arMode = document.querySelector('input[name="arMode"]:checked').value;
     
-    // テンプレート選択時はイメージトラッキングを非表示（サーバー側での事前生成が必要なため）
     const arModeGroup = document.getElementById('kt-ar-mode-group');
     if (imageType === 'テンプレート') {
       document.getElementById('kt-file-group').style.display = 'none'; fileInput.removeAttribute('required');
       document.getElementById('kt-template-group').style.display = 'block'; document.getElementById('kt-template-id').setAttribute('required', 'true');
       
       arModeGroup.style.display = 'none';
-      document.querySelector('input[name="arMode"][value="hiro"]').checked = true; // 強制的にhiroモードへ
+      document.querySelector('input[name="arMode"][value="hiro"]').checked = true; 
     } else {
       document.getElementById('kt-file-group').style.display = 'block'; fileInput.setAttribute('required', 'true');
       document.getElementById('kt-template-group').style.display = 'none'; document.getElementById('kt-template-id').removeAttribute('required');
       
-      arModeGroup.style.display = 'block'; // 画像アップロード時のみ表示
+      arModeGroup.style.display = 'block'; 
     }
 
     const currentArMode = document.querySelector('input[name="arMode"]:checked').value;
     
-    const basePrice = itemType === 'キーホルダー' ? s.PRICE_KEY_RING : s.PRICE_CHARM;
+    // 💡 動的計算
+    const basePrice = selectedItem ? Number(selectedItem.dataset.price) : 0;
     const optTemplatePrice = imageType === 'テンプレート' ? s.PRICE_TEMPLATE : 0;
-    const optMindArPrice = currentArMode === 'mindar' ? s.PRICE_MIND_AR : 0; // 追加
+    const optMindArPrice = currentArMode === 'mindar' ? s.PRICE_MIND_AR : 0;
     const totalOptionPrice = optTemplatePrice + optMindArPrice;
 
     const subTotal = basePrice + totalOptionPrice + s.PRICE_POSTAGE;
@@ -243,19 +265,13 @@
         const img = new Image();
         img.onload = async () => {
           try {
-            if (!window.MINDAR || !window.MINDAR.IMAGE) {
-              return reject(new Error('MindAR compiler not loaded'));
-            }
+            if (!window.MINDAR || !window.MINDAR.IMAGE) return reject(new Error('MindAR compiler not loaded'));
             const compiler = new window.MINDAR.IMAGE.Compiler();
-            await compiler.compileImageTargets([img], (progress) => {
-              console.log('MindAR Compiling Progress:', progress.toFixed(2));
-            });
+            await compiler.compileImageTargets([img], (progress) => { console.log('MindAR Compiling Progress:', progress.toFixed(2)); });
             const exportedBuffer = await compiler.exportData();
             const blob = new Blob([exportedBuffer], { type: 'application/octet-stream' });
             resolve(blob);
-          } catch (err) {
-            reject(err);
-          }
+          } catch (err) { reject(err); }
         };
         img.src = e.target.result;
       };
@@ -272,7 +288,6 @@
     const imageType = document.querySelector('input[name="imageType"]:checked').value;
     const arMode = document.querySelector('input[name="arMode"]:checked').value;
     
-    // オプション詳細にARモードも記載して管理者が把握しやすくする
     const optionDetails = `【種類】${itemType}\n【画像】${imageType}\n【AR再生】${arMode === 'mindar' ? 'イメージトラッキング (+3000円)' : '通常マーカー読込'}\n【性別】${document.getElementById('kt-gender').value}\n【年齢】${document.getElementById('kt-age').value}歳\n【住所】〒${document.getElementById('kt-zip').value} ${document.getElementById('kt-pref').value}${document.getElementById('kt-city').value} ${document.getElementById('kt-building').value}\n【備考】${document.getElementById('kt-memo').value}`;
 
     const formData = new FormData();
@@ -287,23 +302,16 @@
       btn.textContent = '送信中...';
     } else {
       const targetBlob = croppedBlob || originalFile;
-      
-      // 💡 MindARが選択されている時のみコンパイルを実行
       if (arMode === 'mindar') {
         btn.textContent = 'ARデータ生成中... (数秒かかります)';
         try {
           const mindBlob = await compileImageToMind(targetBlob);
           formData.append('mindFile', new File([mindBlob], 'target.mind', { type: 'application/octet-stream' }));
-        } catch (err) {
-          console.warn('トラッキングデータの自動生成に失敗しました（後で管理画面から再生成可能です）。', err);
-        }
+        } catch (err) { console.warn('トラッキングデータの生成エラー', err); }
       }
-
       btn.textContent = '送信中...';
       formData.append('originalFile', originalFile);
-      if (croppedBlob) {
-        formData.append('processedFile', new File([croppedBlob], `proc_${originalFile.name}`, { type: 'image/jpeg' }));
-      }
+      if (croppedBlob) formData.append('processedFile', new File([croppedBlob], `proc_${originalFile.name}`, { type: 'image/jpeg' }));
     }
 
     try {
@@ -312,11 +320,7 @@
         document.getElementById('ar-embed-form').style.display = 'none';
         document.getElementById('kt-result-message').style.display = 'block';
       }
-    } catch (err) { 
-      alert('通信エラーが発生しました'); 
-    } finally { 
-      btn.disabled = false; 
-      btn.textContent = 'この内容で登録する'; 
-    }
+    } catch (err) { alert('通信エラーが発生しました'); } 
+    finally { btn.disabled = false; btn.textContent = 'この内容で登録する'; }
   });
 })();
