@@ -14,7 +14,7 @@
   cropperJs.src = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js';
   document.head.appendChild(cropperJs);
 
-  // 2. ECサイト品質の美しいフォーム用CSS ＋ トリミングモーダル用CSS
+  // 2. フォーム用CSS
   const style = document.createElement('style');
   style.innerHTML = `
     .kt-form-container { width: 100%; max-width: 680px; margin: 0 auto; font-family: 'Zen Maru Gothic', sans-serif, system-ui; background: #ffffff; border-radius: 20px; box-shadow: 0 10px 40px -10px rgba(244,63,94,0.1); color: #374151; overflow: hidden; }
@@ -182,11 +182,14 @@
         </div>
       </form>
       
+      <!-- ARリンクを削除し、サンクスメッセージのみに変更 -->
       <div id="kt-result-message" class="kt-result">
         <div style="font-size: 4rem; margin-bottom: 16px;">🎉</div>
-        <h3 style="color: #be123c; font-size: 1.5rem; font-weight: 800; margin-bottom: 16px;">ご登録ありがとうございます！</h3>
-        <p style="color: #4b5563; margin-bottom: 24px; line-height: 1.6;">ご入力いただいたメールアドレス宛に、<br>お振込先情報を送信いたしました。<br>以下のURLからARをご確認いただけます。</p>
-        <a href="#" id="kt-result-link" target="_blank" style="color: #f43f5e; font-weight: bold; word-break: break-all; background: #fff1f2; padding: 16px; border-radius: 12px; display: inline-block; border: 2px dashed #fecdd3; font-size: 1.1rem;"></a>
+        <h3 style="color: #be123c; font-size: 1.5rem; font-weight: 800; margin-bottom: 16px;">ご注文ありがとうございます！</h3>
+        <p style="color: #4b5563; margin-bottom: 24px; line-height: 1.6;">
+          ご入力いただいたメールアドレス宛に、<br>お振込先などのご案内を送信いたしました。<br>
+          お手元に届くまで楽しみにお待ちください！
+        </p>
       </div>
     </div>
 
@@ -206,7 +209,7 @@
     </div>
   `;
 
-  // 4. トリミングロジック
+  // 4. トリミング & 動画ブロックロジック
   let cropperInstance = null;
   let croppedBlob = null;
   let originalFileName = "";
@@ -220,6 +223,14 @@
     const file = e.target.files[0];
     if (!file) return;
 
+    // 【追加】動画ファイルが選択されたらアラートを出してブロックする（機能は残す）
+    if (file.type.startsWith('video/')) {
+      alert('申し訳ありません。現在、動画ファイルのアップロードは準備中となっております。\n画像ファイル（.jpg, .pngなど）をご選択ください。');
+      fileInput.value = ''; // ファイル選択をクリア
+      fileStatus.style.display = 'none';
+      return;
+    }
+
     // 画像の場合のみトリミング画面を表示
     if (file.type.startsWith('image/')) {
       originalFileName = file.name;
@@ -229,7 +240,6 @@
         cropModal.style.display = 'flex';
         
         if (cropperInstance) cropperInstance.destroy();
-        // Cropper.jsの初期化（自由な縦横比）
         cropperInstance = new window.Cropper(cropImage, {
           viewMode: 1,
           autoCropArea: 0.9,
@@ -237,18 +247,11 @@
         });
       };
       reader.readAsDataURL(file);
-    } else {
-      // 動画等の場合はトリミングをスルー
-      croppedBlob = null;
-      fileStatus.style.display = 'block';
-      fileStatus.textContent = '🎥 動画ファイルが選択されました';
     }
   });
 
-  // トリミング確定
   document.getElementById('kt-btn-crop-confirm').addEventListener('click', () => {
     if (!cropperInstance) return;
-    // 最大1200pxにリサイズして軽量化
     cropperInstance.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 }).toBlob((blob) => {
       croppedBlob = blob;
       cropModal.style.display = 'none';
@@ -257,14 +260,12 @@
     }, 'image/jpeg', 0.85);
   });
 
-  // トリミングキャンセル
   document.getElementById('kt-btn-crop-cancel').addEventListener('click', () => {
     cropModal.style.display = 'none';
-    croppedBlob = null; // キャンセル時は元のファイルを使用
+    croppedBlob = null; 
     fileStatus.style.display = 'block';
     fileStatus.textContent = '※ トリミングせずに元の画像を使用します';
   });
-
 
   // 5. 金額計算・UI切り替えロジック
   const updateFormState = () => {
@@ -344,7 +345,6 @@ ${templateText}
     if (imageType === 'テンプレートから画像を選ぶ') {
       fileToSend = new File(["template_selected"], "template.txt", { type: "text/plain" });
     } else {
-      // トリミング済みの画像があればそれを使用し、無ければ元のファイルを使用
       if (croppedBlob) {
         fileToSend = new File([croppedBlob], originalFileName || "cropped.jpg", { type: "image/jpeg" });
       } else {
@@ -366,12 +366,13 @@ ${templateText}
         body: formData
       });
       const data = await response.json();
+      
+      // ARリンクの表示処理を削除し、サンクス画面への切り替えのみを実行
       if (data.success) {
         form.style.display = 'none';
         document.getElementById('kt-result-message').style.display = 'block';
-        document.getElementById('kt-result-link').href = data.arUrl;
-        document.getElementById('kt-result-link').textContent = data.arUrl;
       } else { alert('エラーが発生しました: ' + data.error); }
+      
     } catch (err) { alert('通信エラーが発生しました。'); } 
     finally { submitBtn.disabled = false; submitBtn.textContent = '登録する'; }
   });
