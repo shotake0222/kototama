@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import nodemailer from 'nodemailer'; // 追加：メール送信用ライブラリ
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
       if (uploadError) throw uploadError;
     }
 
-    // 2. セキュアなハッシュ化URLの生成とデータベース保存
+    // 2. セキュアなハッシュ化URLの生成とDB保存
     const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
     const arUrl = `https://kototama.vercel.app/ar/${hashId}`;
     
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. 構成図要件：管理者（info@kototama-ar.com）への通知メール送信処理
+    // 3. Nodemailerを使ったメール送信処理（XServer経由）
     const adminEmailBody = `
 新しい受注がありました。
 
@@ -86,28 +87,30 @@ ${arUrl}
 ※管理画面のダッシュボードからも詳細をご確認いただけます。
     `.trim();
 
-    // Vercel環境でよく使われるResend等のメールAPI呼び出し（環境変数が設定されている場合）
-    if (process.env.RESEND_API_KEY) {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          from: 'no-reply@kototama-ar.com',
-          to: 'info@kototama-ar.com,shotake0222@gmail.com,shotaro6022@gmail.com',
-          subject: `【ことたま】新規受注のお知らせ（${customerName}様）`,
-          text: adminEmailBody
-        })
+    // Vercelの環境変数からSMTP設定を読み込む
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST, // 例: sv***.xserver.jp
+      port: 465, // XServerのセキュアポート
+      secure: true,
+      auth: {
+        user: process.env.SMTP_USER, // 例: no-reply@kototama-ar.com
+        pass: process.env.SMTP_PASS, // メールアドレスのパスワード
+      },
+    });
+
+    // SMTP設定が存在する場合のみメールを送信
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      await transporter.sendMail({
+        from: `"ことたま システム" <${process.env.SMTP_USER}>`, // 送信元
+        to: 'info@kototama-ar.com', // 宛先（管理者）
+        subject: `【ことたま】新規受注のお知らせ（${customerName}様）`,
+        text: adminEmailBody,
       });
     } else {
-      // 開発中・APIキー未設定時はVercelのサーバーログに出力して確認可能にする
-      console.log('=== 管理者宛てメール送信ロジック実行 ===');
+      console.log('=== SMTP設定が未登録のため、ログ出力のみ行います ===');
       console.log(adminEmailBody);
     }
 
-    // 4. ユーザー側（フロントエンド）にはARのURLは返さず、成功ステータスのみを返す
     return NextResponse.json({ success: true }, { headers: corsHeaders });
 
   } catch (error) {
