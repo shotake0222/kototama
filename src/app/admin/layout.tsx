@@ -22,7 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* サイドバー */}
       <aside className="w-64 bg-gray-900 text-white flex flex-col">
         <div className="p-4 text-lg font-bold border-b border-gray-800 tracking-wider">
-          管理パネル
+          管理
         </div>
         <nav className="flex-1 p-4 space-y-2">
           <Link href="/admin/dashboard" className={`block p-3 rounded text-sm transition-colors ${pathname.includes('dashboard') ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>
