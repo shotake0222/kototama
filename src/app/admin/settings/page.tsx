@@ -2,72 +2,108 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 
-type Setting = { key: string; name: string; value: string };
-
 export default function SettingsPage() {
   const supabase = createClient();
-  const [settings, setSettings] = useState<Setting[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [options, setOptions] = useState<any[]>([]);
+  const [newName, setNewName] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+
+  const fetchOptions = async () => {
+    const { data } = await supabase
+      .from('form_options')
+      .select('*')
+      .order('display_order', { ascending: true });
+    if (data) setOptions(data);
+  };
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      const { data, error } = await supabase.from('system_settings').select('*').order('key');
-      if (data) setSettings(data);
-      setIsLoading(false);
-    };
-    fetchSettings();
+    fetchOptions();
   }, [supabase]);
 
-  const handleValueChange = (key: string, newValue: string) => {
-    setSettings(prev => prev.map(s => s.key === key ? { ...s, value: newValue } : s));
-  };
+  // 新規オプション追加
+  const handleAddOption = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName) return;
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    // Supabaseの upsert を使って一括更新する
-    const { error } = await supabase.from('system_settings').upsert(settings);
+    const { error } = await supabase.from('form_options').insert({
+      name: newName,
+      price: Number(newPrice) || 0,
+      display_order: options.length + 1,
+    });
+
     if (error) {
-      alert('保存に失敗しました');
+      alert('追加に失敗しました');
     } else {
-      alert('設定を保存しました');
+      setNewName('');
+      setNewPrice('');
+      fetchOptions();
     }
-    setIsSaving(false);
   };
 
-  if (isLoading) return <div className="p-8">読み込み中...</div>;
+  // 削除処理
+  const handleDeleteOption = async (id: string) => {
+    if (!confirm('このオプションを削除しますか？')) return;
+    await supabase.from('form_options').delete().eq('id', id);
+    fetchOptions();
+  };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">システム設定管理</h1>
-        <button onClick={handleSave} disabled={isSaving} className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50">
-          {isSaving ? '保存中...' : '一括保存'}
-        </button>
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-6">システム設定・フォームオプション管理</h1>
+
+      {/* オプション追加フォーム */}
+      <div className="bg-white p-6 rounded-lg shadow mb-8">
+        <h2 className="text-lg font-bold mb-4">➕ 新規オプション項目の追加</h2>
+        <form onSubmit={handleAddOption} className="flex gap-4 items-end">
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">オプション名</label>
+            <input
+              type="text"
+              placeholder="例: ARカード印刷"
+              className="border p-2 rounded w-64 text-sm"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">追加価格（円）</label>
+            <input
+              type="number"
+              placeholder="1000"
+              className="border p-2 rounded w-32 text-sm"
+              value={newPrice}
+              onChange={(e) => setNewPrice(e.target.value)}
+            />
+          </div>
+          <button type="submit" className="bg-blue-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-800">
+            追加する
+          </button>
+        </form>
       </div>
-      
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full text-left">
-          <thead className="bg-gray-50">
+
+      {/* オプション一覧 */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="min-w-full text-sm text-left">
+          <thead className="bg-gray-100 border-b">
             <tr>
-              <th className="px-6 py-3 font-medium text-gray-500">項目名 (キー)</th>
-              <th className="px-6 py-3 font-medium text-gray-500">設定値</th>
+              <th className="p-4 font-semibold text-gray-700">オプション名</th>
+              <th className="p-4 font-semibold text-gray-700">追加価格</th>
+              <th className="p-4 font-semibold text-gray-700">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
-            {settings.map((setting) => (
-              <tr key={setting.key}>
-                <td className="px-6 py-4">
-                  <div className="font-medium text-gray-900">{setting.name}</div>
-                  <div className="text-sm text-gray-500">{setting.key}</div>
-                </td>
-                <td className="px-6 py-4">
-                  <input
-                    type="text"
-                    value={setting.value}
-                    onChange={(e) => handleValueChange(setting.key, e.target.value)}
-                    className="w-full border-gray-300 border p-2 rounded focus:ring-blue-500 focus:border-blue-500"
-                  />
+          <tbody>
+            {options.map((opt) => (
+              <tr key={opt.id} className="border-b hover:bg-gray-50">
+                <td className="p-4 font-bold">{opt.name}</td>
+                <td className="p-4">＋¥{opt.price.toLocaleString()}</td>
+                <td className="p-4">
+                  <button
+                    onClick={() => handleDeleteOption(opt.id)}
+                    className="text-xs bg-red-100 text-red-600 hover:bg-red-200 px-2 py-1 rounded font-bold"
+                  >
+                    削除
+                  </button>
                 </td>
               </tr>
             ))}

@@ -7,14 +7,17 @@ export default function ARScene({ params }: { params: { hash: string } }) {
   const supabase = createClient();
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [templateUrl, setTemplateUrl] = useState<string | null>(null);
+  const [scale, setScale] = useState<number>(1.0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchARData = async () => {
+      // object_scaleも同時に取得するよう修正
       const { data: order, error } = await supabase
         .from('orders')
         .select(`
           id,
+          object_scale,
           order_images ( image_url ),
           templates ( object_url )
         `)
@@ -22,6 +25,8 @@ export default function ARScene({ params }: { params: { hash: string } }) {
         .single();
 
       if (order) {
+        if (order.object_scale) setScale(order.object_scale);
+
         if (order.order_images && order.order_images.length > 0) {
           const { data: mediaData } = supabase.storage
             .from('ar_images')
@@ -48,7 +53,13 @@ export default function ARScene({ params }: { params: { hash: string } }) {
   const isVideo = mediaUrl?.match(/\.(mp4|webm|mov)$/i);
   const isTemplate3D = templateUrl?.match(/\.(glb|gltf)$/i);
 
-  // エラー原因だったバッククォートの入れ子を避け、安全なダブルクォーテーションの結合に変更
+  // 基準サイズ(幅2, 高さ1.5)に、データベースから取得した倍率を掛ける
+  const objWidth = 2 * scale;
+  const objHeight = 1.5 * scale;
+  // テンプレート画像用のサイズ
+  const tplWidth = 3 * scale;
+  const tplHeight = 2.5 * scale;
+
   const aframeHtml = `
     <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" style="height: 100vh; width: 100vw;">
       <a-assets>
@@ -66,16 +77,18 @@ export default function ARScene({ params }: { params: { hash: string } }) {
       </a-assets>
       
       <a-marker type="pattern" url="/markers/custom.patt">
+        <!-- メインの表示オブジェクトに計算した幅・高さを適用 -->
         ${mediaUrl ? 
           (isVideo 
-            ? "<a-video src='#user-media' position='0 0.1 0' rotation='-90 0 0' width='2' height='1.5'></a-video>"
-            : "<a-image src='#user-media' position='0 0.1 0' rotation='-90 0 0' width='2' height='1.5'></a-image>") 
+            ? "<a-video src='#user-media' position='0 0.1 0' rotation='-90 0 0' width='" + objWidth + "' height='" + objHeight + "'></a-video>"
+            : "<a-image src='#user-media' position='0 0.1 0' rotation='-90 0 0' width='" + objWidth + "' height='" + objHeight + "'></a-image>") 
           : ""}
 
+        <!-- テンプレートオブジェクトにも倍率を適用 -->
         ${templateUrl ? 
           (isTemplate3D 
-            ? "<a-entity gltf-model='#template-model' position='0 0 0' scale='1 1 1'></a-entity>"
-            : "<a-image src='#template-image' position='0 0 0' rotation='-90 0 0' width='3' height='2.5'></a-image>")
+            ? "<a-entity gltf-model='#template-model' position='0 0 0' scale='" + scale + " " + scale + " " + scale + "'></a-entity>"
+            : "<a-image src='#template-image' position='0 0 0' rotation='-90 0 0' width='" + tplWidth + "' height='" + tplHeight + "'></a-image>")
           : ""}
       </a-marker>
 
