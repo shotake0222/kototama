@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,7 +13,6 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 export async function OPTIONS() {
@@ -23,99 +24,71 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const customerName = formData.get('customerName') as string;
     const email = formData.get('email') as string;
-    const file = formData.get('file') as File;
+    const originalFile = formData.get('originalFile') as File | null;
+    const processedFile = formData.get('processedFile') as File | null;
+    const templateId = formData.get('templateId') as string;
     const clientId = formData.get('clientId') as string || 'unknown';
     const optionDetails = formData.get('optionDetails') as string;
     const totalPrice = parseInt(formData.get('totalPrice') as string || '0', 10);
-    
-    // 【追加】テンプレートIDを受け取る
-    const templateId = formData.get('templateId') as string;
     
     if (!customerName || !email) {
       return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400, headers: corsHeaders });
     }
 
-    let fileName = '';
+    let originalFileName = '';
+    let processedFileName = '';
 
-    // 1. テンプレート or 画像アップロードの分岐処理
+    // 1. ファイル保存処理（テンプレート or 画像アップロード）
     if (templateId) {
-      // 全角を半角にし、小文字を大文字に変換する安全処理
-      let formattedId = templateId.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(s) {
-          return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
-      }).toUpperCase().trim();
-      // 揺れを吸収 (例: Tー01, T-01, T01)
+      let formattedId = templateId.replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).toUpperCase().trim();
       formattedId = formattedId.replace(/ー|−|_/g, '-');
       if (!formattedId.includes('-')) formattedId = formattedId.replace('T', 'T-');
-      
-      // Supabase内のテンプレートフォルダのパスを指定
-      fileName = `templates/${formattedId}.jpg`;
-      
-    } else if (file && file.name !== 'template.txt') {
-      // 通常の画像アップロード処理
-      const fileExt = file.name.split('.').pop();
-      fileName = `${uuidv4()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from('ar_images')
-        .upload(fileName, file);
-      if (uploadError) throw uploadError;
+      processedFileName = `templates/${formattedId}.jpg`;
+    } else {
+      if (originalFile && originalFile.name !== 'template.txt') {
+        originalFileName = `orig_${uuidv4()}.${originalFile.name.split('.').pop()}`;
+        await supabase.storage.from('ar_images').upload(originalFileName, originalFile);
+      }
+      if (processedFile && processedFile.name !== 'template.txt') {
+        processedFileName = `proc_${uuidv4()}.${processedFile.name.split('.').pop()}`;
+        await supabase.storage.from('ar_images').upload(processedFileName, processedFile);
+      }
     }
 
-    // 2. セキュアなハッシュ化URLの生成とDB保存
+    // 2. データベース保存
     const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
     const arUrl = `https://kototama.vercel.app/ar/${hashId}`;
     
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        customer_name: customerName,
-        email: email,
-        hash_id: hashId,
-        total_price: totalPrice,
-        status: 'pending',
-        client_id: clientId,
-        option_details: optionDetails
-      })
-      .select()
-      .single();
-
+    const { data: order, error: orderError } = await supabase.from('orders')
+      .insert({ customer_name: customerName, email, hash_id: hashId, total_price: totalPrice, status: 'pending', client_id: clientId, option_details: optionDetails })
+      .select().single();
     if (orderError) throw orderError;
 
-    // 画像（またはテンプレートパス）をAR用に登録
-    if (fileName) {
+    if (processedFileName) {
       await supabase.from('order_images').insert({
         order_id: order.id,
-        image_url: fileName,
+        original_image_url: originalFileName || null,
+        processed_image_url: processedFileName,
       });
     }
 
-    // 3. Nodemailerを使ったメール送信処理
-    const adminEmailBody = `
-新しい受注がありました。
-
-【お客様名】${customerName} 様
-【メールアドレス】${email}
-【受注金額】¥${totalPrice.toLocaleString()}
-
-【ご注文詳細】
-${optionDetails}
-
-【生成されたARのURL】
-${arUrl}
-※このURLは管理者およびお客様専用のハッシュ化された非公開リンクです。
-※管理画面のダッシュボードからも詳細をご確認いただけます。
-    `.trim();
-
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    // 3. txtファイル読み込みと変数置換（メール送信）
+    const filePath = path.join(process.cwd(), 'src', 'data', 'admin_mail.txt');
+    let adminEmailBody = fs.readFileSync(filePath, 'utf-8');
+    adminEmailBody = adminEmailBody
+      .replace(/{{CUSTOMER_NAME}}/g, customerName)
+      .replace(/{{EMAIL}}/g, email)
+      .replace(/{{TOTAL_PRICE}}/g, totalPrice.toLocaleString())
+      .replace(/{{OPTION_DETAILS}}/g, optionDetails)
+      .replace(/{{AR_URL}}/g, arUrl);
 
     if (process.env.SMTP_HOST) {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: 465,
+        secure: true,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      });
       await transporter.sendMail({
         from: `"ことたま システム" <${process.env.SMTP_USER}>`,
         to: 'info@kototama-ar.com',
@@ -123,13 +96,12 @@ ${arUrl}
         text: adminEmailBody,
       });
     } else {
-      console.log(adminEmailBody);
+      console.log('=== Mail Mock ===\n', adminEmailBody);
     }
 
     return NextResponse.json({ success: true }, { headers: corsHeaders });
-
   } catch (error) {
-    console.error('Embed API Error:', error);
+    console.error('API Error:', error);
     return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500, headers: corsHeaders });
   }
 }
