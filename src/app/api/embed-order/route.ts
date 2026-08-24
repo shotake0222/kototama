@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-import nodemailer from 'nodemailer'; // 追加：メール送信用ライブラリ
+import nodemailer from 'nodemailer';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,13 +28,30 @@ export async function POST(request: Request) {
     const optionDetails = formData.get('optionDetails') as string;
     const totalPrice = parseInt(formData.get('totalPrice') as string || '0', 10);
     
-    if (!customerName || !email || !file) {
+    // 【追加】テンプレートIDを受け取る
+    const templateId = formData.get('templateId') as string;
+    
+    if (!customerName || !email) {
       return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400, headers: corsHeaders });
     }
 
-    // 1. ファイルをSupabaseにアップロード
-    let fileName = 'template_only';
-    if (file.name !== 'template.txt') {
+    let fileName = '';
+
+    // 1. テンプレート or 画像アップロードの分岐処理
+    if (templateId) {
+      // 全角を半角にし、小文字を大文字に変換する安全処理
+      let formattedId = templateId.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(s) {
+          return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
+      }).toUpperCase().trim();
+      // 揺れを吸収 (例: Tー01, T-01, T01)
+      formattedId = formattedId.replace(/ー|−|_/g, '-');
+      if (!formattedId.includes('-')) formattedId = formattedId.replace('T', 'T-');
+      
+      // Supabase内のテンプレートフォルダのパスを指定
+      fileName = `templates/${formattedId}.jpg`;
+      
+    } else if (file && file.name !== 'template.txt') {
+      // 通常の画像アップロード処理
       const fileExt = file.name.split('.').pop();
       fileName = `${uuidv4()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
@@ -63,14 +80,15 @@ export async function POST(request: Request) {
 
     if (orderError) throw orderError;
 
-    if (fileName !== 'template_only') {
+    // 画像（またはテンプレートパス）をAR用に登録
+    if (fileName) {
       await supabase.from('order_images').insert({
         order_id: order.id,
         image_url: fileName,
       });
     }
 
-    // 3. Nodemailerを使ったメール送信処理（XServer経由）
+    // 3. Nodemailerを使ったメール送信処理
     const adminEmailBody = `
 新しい受注がありました。
 
@@ -87,27 +105,24 @@ ${arUrl}
 ※管理画面のダッシュボードからも詳細をご確認いただけます。
     `.trim();
 
-    // Vercelの環境変数からSMTP設定を読み込む
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST, // 例: sv***.xserver.jp
-      port: 465, // XServerのセキュアポート
+      host: process.env.SMTP_HOST,
+      port: 465,
       secure: true,
       auth: {
-        user: process.env.SMTP_USER, // 例: no-reply@kototama-ar.com
-        pass: process.env.SMTP_PASS, // メールアドレスのパスワード
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
     });
 
-    // SMTP設定が存在する場合のみメールを送信
-    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    if (process.env.SMTP_HOST) {
       await transporter.sendMail({
-        from: `"ことたま システム" <${process.env.SMTP_USER}>`, // 送信元
-        to: 'info@kototama-ar.com', // 宛先（管理者）
+        from: `"ことたま システム" <${process.env.SMTP_USER}>`,
+        to: 'info@kototama-ar.com',
         subject: `【ことたま】新規受注のお知らせ（${customerName}様）`,
         text: adminEmailBody,
       });
     } else {
-      console.log('=== SMTP設定が未登録のため、ログ出力のみ行います ===');
       console.log(adminEmailBody);
     }
 

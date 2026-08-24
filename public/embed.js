@@ -352,6 +352,7 @@ ${templateText}
       }
     }
 
+   // ～～～ 既存のコード ～～～
     const formData = new FormData();
     formData.append('customerName', document.getElementById('kt-name').value);
     formData.append('email', document.getElementById('kt-email').value);
@@ -360,6 +361,15 @@ ${templateText}
     formData.append('optionDetails', fullOrderDetails);
     formData.append('totalPrice', window.currentTotalPrice || '0'); 
 
+    // 【ここから下を追加！】 テンプレート番号を独立してAPIへ送る
+    if (imageType === 'テンプレートから画像を選ぶ') {
+      formData.append('templateId', document.getElementById('kt-template-id').value);
+    }
+    // 【ここまで追加】
+
+    try {
+      const response = await fetch('https://kototama.vercel.app/api/embed-order', {
+    // ～～～ 以下既存コードのまま ～～～
     try {
       const response = await fetch('https://kototama.vercel.app/api/embed-order', {
         method: 'POST',
