@@ -24,7 +24,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">AR受発注システム<br/>管理者ログイン</h1>
+        <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">ことたま受発注システム<br/>管理者ログイン</h1>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
