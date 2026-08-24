@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
-import Script from 'next/script'; // 💡 追加：外部スクリプト読み込み用
+import Script from 'next/script';
 
 export default function Dashboard() {
   const supabase = createClient();
@@ -46,6 +46,22 @@ export default function Dashboard() {
     }
   };
 
+  // ==========================================
+  // システム設定ロジック（追加・更新・削除）
+  // ==========================================
+  const handleAddSetting = async () => {
+    const key = prompt('システムキー名を入力してください（英数字・大文字推奨）\n例: PRICE_NEW_ITEM');
+    if (!key) return;
+    const name = prompt('設定項目名を入力してください\n例: 新商品の価格（円）');
+    if (!name) return;
+    const value = prompt('設定値を入力してください\n例: 3500');
+    if (!value) return;
+
+    const { error } = await supabase.from('system_settings').insert({ key, name, value });
+    if (error) alert('追加に失敗しました。すでに同じキー名が存在する可能性があります。');
+    else { alert('新しい設定を追加しました！'); fetchData(); }
+  };
+
   const handleUpdateSetting = async (settingKey: string, settingName: string, currentValue: string) => {
     const newValue = prompt(`【${settingName}】の新しい値を入力してください`, currentValue);
     if (newValue !== null && newValue !== currentValue) {
@@ -55,6 +71,16 @@ export default function Dashboard() {
     }
   };
 
+  const handleDeleteSetting = async (settingKey: string, settingName: string) => {
+    if (!confirm(`本当に「${settingName}」を削除しますか？\n※システムでこのキーを使用している場合、表示がおかしくなる可能性があります。`)) return;
+    const { error } = await supabase.from('system_settings').delete().eq('key', settingKey);
+    if (error) alert('削除に失敗しました');
+    else { alert('削除しました。'); fetchData(); }
+  };
+
+  // ==========================================
+  // 画像管理ロジック
+  // ==========================================
   const triggerFileInput = (type: string, id?: string, oldPath?: string) => {
     setUploadTarget({ type, id, oldPath });
     fileInputRef.current?.click();
@@ -123,13 +149,10 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* 💡 ここがポイント：Tailwind CSSを強制的に読み込んでデザイン崩れを直します */}
       <Script src="https://cdn.tailwindcss.com" strategy="beforeInteractive" />
-
       <div className="min-h-screen bg-gray-50 p-8 text-gray-800 font-sans">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-extrabold mb-8 text-gray-900 border-b pb-4">ことたま 管理ダッシュボード</h1>
-          
           <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleFileChange} />
 
           <div className="flex space-x-2 border-b-2 border-gray-200 mb-8">
@@ -138,8 +161,11 @@ export default function Dashboard() {
             <button onClick={() => setActiveTab('settings')} className={`px-6 py-3 font-bold rounded-t-lg transition ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>⚙️ システム設定</button>
           </div>
 
+          {/* =========================================
+              タブ: 注文・顧客管理
+          ========================================= */}
           {activeTab === 'orders' && (
-            <div className="space-y-8">
+            <div className="space-y-8 animate-fade-in">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h2 className="text-lg font-bold mb-4 text-blue-900">🔗 クライアント用 埋め込みタグ生成</h2>
                 <div className="flex gap-4 mb-4">
@@ -183,8 +209,11 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* =========================================
+              タブ: 画像管理
+          ========================================= */}
           {activeTab === 'images' && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
               <div className="flex bg-gray-50 border-b">
                 <button onClick={() => setActiveImageTab('processed')} className={`px-6 py-3 font-bold text-sm transition ${activeImageTab === 'processed' ? 'border-b-4 border-blue-500 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}>処理済み画像</button>
                 <button onClick={() => setActiveImageTab('original')} className={`px-6 py-3 font-bold text-sm transition ${activeImageTab === 'original' ? 'border-b-4 border-blue-500 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}>オリジナル画像</button>
@@ -238,22 +267,51 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* =========================================
+              タブ: システム設定
+          ========================================= */}
           {activeTab === 'settings' && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-6 bg-rose-50 border-b"><h2 className="font-bold text-rose-900 text-lg">システム定数・各種設定</h2></div>
-              <table className="min-w-full text-sm text-left">
-                <thead className="bg-white border-b"><tr><th className="p-4 font-bold text-gray-600 w-1/4">キー名（変更不可）</th><th className="p-4 font-bold text-gray-600 w-1/3">設定項目名</th><th className="p-4 font-bold text-gray-600">現在の値</th><th className="p-4 font-bold text-gray-600 text-right">操作</th></tr></thead>
-                <tbody>
-                  {settings.map((setting) => (
-                    <tr key={setting.key} className="border-b hover:bg-gray-50 transition">
-                      <td className="p-4 font-mono text-xs text-gray-400">{setting.key}</td>
-                      <td className="p-4 font-bold text-gray-700">{setting.name}</td>
-                      <td className="p-4"><div className="bg-gray-100 px-3 py-2 rounded text-gray-800 font-mono inline-block">{setting.value}</div></td>
-                      <td className="p-4 text-right"><button onClick={() => handleUpdateSetting(setting.key, setting.name, setting.value)} className="bg-gray-800 hover:bg-gray-900 text-white font-bold px-4 py-2 rounded-lg text-xs shadow transition">編集</button></td>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
+              <div className="p-6 bg-rose-50 border-b flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-rose-900 text-lg">システム定数・各種設定</h2>
+                  <p className="text-sm text-rose-700 mt-1">ここで変更・追加した値は、システム全体で利用可能な変数として即座に反映されます。</p>
+                </div>
+                {/* 💡 新規追加ボタン */}
+                <button 
+                  onClick={handleAddSetting} 
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-5 py-2 rounded-lg shadow-sm transition whitespace-nowrap"
+                >
+                  ＋ 新規設定を追加
+                </button>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-left">
+                  <thead className="bg-white border-b">
+                    <tr>
+                      <th className="p-4 font-bold text-gray-600 w-1/4">キー名（システム変数）</th>
+                      <th className="p-4 font-bold text-gray-600 w-1/3">設定項目名</th>
+                      <th className="p-4 font-bold text-gray-600">現在の値</th>
+                      <th className="p-4 font-bold text-gray-600 text-right">操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {settings.map((setting) => (
+                      <tr key={setting.key} className="border-b hover:bg-gray-50 transition">
+                        <td className="p-4 font-mono text-xs text-gray-500 bg-gray-50">{setting.key}</td>
+                        <td className="p-4 font-bold text-gray-700">{setting.name}</td>
+                        <td className="p-4"><div className="bg-white border px-3 py-2 rounded text-gray-800 font-mono inline-block">{setting.value}</div></td>
+                        <td className="p-4 text-right space-x-2">
+                          <button onClick={() => handleUpdateSetting(setting.key, setting.name, setting.value)} className="bg-gray-800 hover:bg-gray-900 text-white font-bold px-3 py-2 rounded text-xs shadow transition">編集</button>
+                          {/* 💡 削除ボタン */}
+                          <button onClick={() => handleDeleteSetting(setting.key, setting.name)} className="bg-red-50 text-red-600 hover:bg-red-100 font-bold px-3 py-2 rounded text-xs transition">削除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
