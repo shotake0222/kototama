@@ -9,9 +9,10 @@ export default function Dashboard() {
 
   // 注文データの取得
   const fetchOrders = async () => {
+    // 💡 修正箇所：order_images(image_url) を order_images(*) に変更し、新しいカラム構造に対応
     const { data } = await supabase
       .from('orders')
-      .select('*, order_images(image_url)')
+      .select('*, order_images(*)')
       .order('created_at', { ascending: false });
     if (data) setOrders(data);
   };
@@ -92,8 +93,8 @@ export default function Dashboard() {
                   <div className="text-gray-500 text-xs">{order.email}</div>
                 </td>
                 <td className="p-4">
-                  <div className="text-gray-700">{order.option_details || 'なし'}</div>
-                  <div className="font-bold">¥{order.total_price?.toLocaleString() || 0}</div>
+                  <div className="text-gray-700 whitespace-pre-wrap">{order.option_details || 'なし'}</div>
+                  <div className="font-bold mt-2">¥{order.total_price?.toLocaleString() || 0}</div>
                 </td>
                 <td className="p-4">
                   <div className="flex items-center gap-2">
