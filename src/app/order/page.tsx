@@ -72,6 +72,18 @@ export default function OrderForm() {
         .insert([{ order_id: orderData.id, image_url: fileName }]);
       if (imageError) throw imageError;
 
+      // ==========================================
+      // ▼▼▼ ここにメール送信APIの呼び出しを追記 ▼▼▼
+      // ==========================================
+      await fetch('/api/send-mail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderData.id }),
+      });
+      // ==========================================
+      // ▲▲▲ 追記ここまで ▲▲▲
+      // ==========================================
+
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       setHashUrl(`${origin}/ar/${hashId}`);
       setStatus('success');
