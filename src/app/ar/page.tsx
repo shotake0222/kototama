@@ -18,7 +18,6 @@ function ARViewer() {
   const supabase = createClient();
 
   useEffect(() => {
-    // 💡 iframe内で絶対パスを使うために、現在のドメインを取得
     setOrigin(window.location.origin);
 
     if (!uid) {
@@ -41,7 +40,6 @@ function ARViewer() {
           return;
         }
 
-        // DBから画像のURLを生成
         const storageBase = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/ar_images/`;
         
         const imageUrls = data.order_images
@@ -79,9 +77,9 @@ function ARViewer() {
     );
   }
 
-  // 💡 相対パスでの読み込み失敗を防ぐため、絶対パス（https://.../markers/pattern-kototama.patt）を生成
   const pattUrl = `${origin}/markers/pattern-kototama.patt`;
 
+  // 💡 テスト用の赤い箱やデバッグパネルを削除し、本番用の画像のみを表示
   const arHtml = `
 <!DOCTYPE html>
 <html lang="ja">
@@ -95,12 +93,7 @@ function ARViewer() {
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
   <style>
-    body {
-        margin: 0px; 
-        overflow: hidden;
-        background-color: transparent;
-    }
-    /* 以下はスナップショット用UIのCSS（前回と同じ） */
+    body { margin: 0px; overflow: hidden; background-color: transparent; }
     .ui { position: absolute; z-index: 100; bottom: 0; left: 0; width: 100%; height: auto; margin: 0; padding: 10px 15px 30px; text-align: center; box-sizing: border-box; }
     .ui a { display: inline-block; width: 60px; height: 60px; background-color: #ffffff; line-height: 100%; color: #303030; margin: 10px 3px; border-radius: 50%; position: relative; }
     .ui a i { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
@@ -108,42 +101,24 @@ function ARViewer() {
     #snap { max-width: 100%; height: auto; display: block; visibility: hidden; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 80%; border: 4px solid white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 99; }
     .ui a.disabled { pointer-events: none; color: #cccccc; }
     #snap.visible { visibility: visible; }
-    
-    /* 💡 状態確認用のデバッグパネル */
-    #debug-panel {
-        position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8);
-        padding: 8px; font-size: 12px; font-family: sans-serif; z-index: 999; border-radius: 4px;
-        pointer-events: none;
-    }
   </style>
 </head>
 
 <body>
-  <!-- 💡 状態が一目でわかるデバッグパネル -->
-  <div id="debug-panel">
-    <div><b>マーカー状態:</b> <span id="marker-status" style="color:red; font-weight:bold;">見つかりません (LOST)</span></div>
-  </div>
-
   <a-scene embedded arjs="debugUIEnabled:false;trackingMethod:best;patternRatio:0.9;" vr-mode-ui="enabled:false">
     <a-assets>
       <img id="ar-image" crossorigin="anonymous" src="${images[0]}">
     </a-assets>
     
-    <!-- 💡 絶対パスで確実にマーカーを読み込む -->
     <a-marker id="kototama-marker" preset="custom" type="pattern" url="${pattUrl}">
-      
-      <!-- 💡 テスト用の赤い箱。マーカーを認識していれば【必ず】出ます -->
-      <a-box position="0 0.5 0" color="red" opacity="0.6" scale="${scale} ${scale} ${scale}"></a-box>
-      
-      <!-- 💡 本命の画像 -->
+      <!-- 💡 本命の画像のみを表示。Django版と同じく position="0 0 0", rotation="-90 0 0" に設定 -->
       <a-image src="#ar-image" position="0 0 0" scale="${scale} ${scale} ${scale}" rotation="-90 0 0"></a-image>
-      
     </a-marker>
 
     <a-entity camera></a-entity>
   </a-scene>
 
-  <!-- UI Elements -->
+  <!-- スナップショット用UI -->
   <img id="snap">
   <div class="ui">
       <a href="#" id="delete-photo" title="Delete Photo" class="disabled"><i class="material-icons">delete</i></a>
@@ -152,20 +127,6 @@ function ARViewer() {
   </div>
 
   <script>
-      // 💡 マーカー認識のデバッグ用スクリプト
-      var marker = document.querySelector('#kototama-marker');
-      var statusText = document.querySelector('#marker-status');
-      
-      marker.addEventListener('markerFound', function() {
-          statusText.innerText = '認識しました！ (FOUND)';
-          statusText.style.color = 'green';
-      });
-      marker.addEventListener('markerLost', function() {
-          statusText.innerText = '見つかりません (LOST)';
-          statusText.style.color = 'red';
-      });
-
-      // 以下スナップショットロジック
       var image = document.querySelector('#snap');
       var take_photo_btn = document.querySelector('#take-photo');
       var delete_photo_btn = document.querySelector('#delete-photo');
