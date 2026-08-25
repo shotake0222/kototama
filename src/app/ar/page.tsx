@@ -3,7 +3,6 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
-import Script from 'next/script';
 
 function ARViewer() {
   const searchParams = useSearchParams();
@@ -12,25 +11,13 @@ function ARViewer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const [arMode, setArMode] = useState<'hiro' | 'mindar'>('hiro');
-  const [animationType, setAnimationType] = useState('none');
-  const [mindFileUrl, setMindFileUrl] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [scale, setScale] = useState(1.0);
-  
-  const [aframeLoaded, setAframeLoaded] = useState(false);
-  const [arjsLoaded, setArjsLoaded] = useState(false);
-
-  // 💡 DOMが完全にマウントされたかどうかの判定用
-  const [isMounted, setIsMounted] = useState(false);
-  
   const supabase = createClient();
 
   useEffect(() => {
-    setIsMounted(true); // コンポーネントがマウントされたことを記録
-
     if (!uid) {
-      setError('NFCタグの情報が読み取れません。');
+      setError('NFCタグの情報が読み取れません。もう一度タッチしてください。');
       setLoading(false);
       return;
     }
@@ -44,17 +31,13 @@ function ARViewer() {
           .single();
 
         if (error || !data) {
-          setError('データが見つかりません。');
+          setError('データが見つかりません。未登録のタグか、表示期間が終了しています。');
           setLoading(false);
           return;
         }
 
-        setArMode(data.ar_mode === 'mindar' ? 'mindar' : 'hiro');
-        setAnimationType(data.animation_type || 'none');
-        
         const storageBase = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/ar_images/`;
-        if (data.mind_file_url) setMindFileUrl(storageBase + data.mind_file_url);
-
+        
         const imageUrls = data.order_images
           .map((img: any) => img.processed_image_url || img.original_image_url)
           .filter(Boolean)
@@ -74,20 +57,9 @@ function ARViewer() {
     fetchOrder();
   }, [uid, supabase]);
 
-  const isArReady = aframeLoaded && arjsLoaded && isMounted && images.length > 0;
-
-  useEffect(() => {
-    if (isArReady) {
-      const timer1 = setTimeout(() => window.dispatchEvent(new Event('resize')), 500);
-      const timer2 = setTimeout(() => window.dispatchEvent(new Event('resize')), 1500);
-      return () => { clearTimeout(timer1); clearTimeout(timer2); };
-    }
-  }, [isArReady]);
-
-  if (loading || !isMounted) {
+  if (loading) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-900 text-white z-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827', color: 'white', zIndex: 50 }}>
         <p>ARデータを読み込み中...</p>
       </div>
     );
@@ -95,121 +67,190 @@ function ARViewer() {
 
   if (error || images.length === 0) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gray-900 text-white p-8 text-center z-50">
-        <div><div className="text-4xl mb-4">⚠️</div><p className="text-rose-400 font-bold">{error || '画像がありません。'}</p></div>
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827', color: 'white', zIndex: 50 }}>
+        <p>{error || '画像データが見つかりません。'}</p>
       </div>
     );
   }
 
-  const globalCss = `
-    body, html, #__next {
-      background-color: transparent !important;
-      background: transparent !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      overflow: hidden !important;
+  // 💡 ご提示いただいたDjango環境のコードを完全に再現し、写真撮影（スナップショット）機能のUIとロジックもそのまま組み込んでいます。
+  const arHtml = `
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
+  
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+  <style>
+    body {
+        margin: 0px; 
+        overflow: hidden;
+        background-color: transparent;
     }
-    video {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      object-fit: cover !important;
-      z-index: -10 !important;
+    .ui {
+        position: absolute;
+        z-index: 100;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: auto;
+        margin: 0;
+        padding: 10px 15px 30px;
+        text-align: center;
+        box-sizing: border-box;
     }
-    .a-canvas {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      z-index: 10 !important;
+    .ui a {
+        display: inline-block;
+        width: 60px;
+        height: 60px;
+        background-color: #ffffff;
+        line-height: 100%;
+        color: #303030;
+        margin: 10px 3px;
+        border-radius: 50%;
+        position: relative;
     }
+    .ui a i {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+    }
+    .ui a:active {
+        color: #ff0000;
+    }
+
+    #snap {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        visibility: hidden;
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80%;
+        border: 4px solid white;
+        border-radius: 8px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        z-index: 99;
+    }
+    .ui a.disabled {
+        pointer-events: none;
+        color: #cccccc;
+    }
+    #snap.visible {
+        visibility: visible;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- AR.js Engine -->
+  <a-scene embedded arjs="debugUIEnabled:false;trackingMethod:best;patternRatio: 0.9;" vr-mode-ui="enabled:false">
+    <a-assets>
+      <img id="ar-image" crossorigin="anonymous" src="${images[0]}">
+    </a-assets>
+    
+    <a-marker preset="custom" type="pattern" url="/markers/pattern-kototama.patt">
+      <a-image src="#ar-image" position="0 0 0" scale="${scale} ${scale} ${scale}" rotation="-90 0 0"></a-image>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <!-- UI Elements -->
+  <img id="snap">
+  <div class="ui">
+      <a href="#" id="delete-photo" title="Delete Photo" class="disabled"><i class="material-icons">delete</i></a>
+      <a href="#" id="take-photo" title="Take Photo"><i class="material-icons">photo_camera</i></a>
+      <a href="#" id="download-photo" download="DownloadPhoto.png" title="Save Photo" class="disabled" target="_blank"><i class="material-icons">file_download</i></a>
+  </div>
+
+  <!-- Snapshot Logic -->
+  <script>
+      var image = document.querySelector('#snap');
+      var take_photo_btn = document.querySelector('#take-photo');
+      var delete_photo_btn = document.querySelector('#delete-photo');
+      var download_photo_btn = document.querySelector('#download-photo');
+
+      take_photo_btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          var video = document.querySelector('video');
+          var snap = takeSnapshot(video);
+
+          image.setAttribute('src', snap);
+          image.classList.add('visible');
+
+          delete_photo_btn.classList.remove("disabled");
+          download_photo_btn.classList.remove("disabled");
+          download_photo_btn.href = snap;
+      });
+
+      delete_photo_btn.addEventListener("click", function(e){
+          e.preventDefault();
+          image.setAttribute('src', "");
+          image.classList.remove("visible");
+
+          delete_photo_btn.classList.add("disabled");
+          download_photo_btn.classList.add("disabled");
+      });
+
+      function takeSnapshot(video) {
+          var resizedCanvas = document.createElement("canvas");
+          var resizedContext = resizedCanvas.getContext("2d");
+          var width = video.videoWidth;
+          var height = video.videoHeight;
+          var aScene = document.querySelector("a-scene").components.screenshot.getCanvas("perspective");
+
+          if (width && height) {
+              resizedCanvas.width = width;
+              resizedCanvas.height = height;
+              resizedContext.drawImage(video, 0, 0, width, height);
+
+              if (width > height) {
+                  // 横長（PC)
+                  resizedContext.drawImage(aScene, 0, 0, width, height);
+              } else {
+                  // 縦長（スマホ）
+                  var scale = height / width;
+                  var scaledWidth = height * scale;
+                  var marginLeft = (width - scaledWidth) / 2;
+                  resizedContext.drawImage(aScene, marginLeft, 0, scaledWidth, height);
+              }
+              return resizedCanvas.toDataURL('image/png');
+          }
+      }
+  </script>
+</body>
+</html>
   `;
 
-  if (arMode === 'hiro') {
-    // 💡 TypeScriptエラーを回避するため、再度文字列（HTML）として定義します
-    const arHtml = `
-      <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; patternRatio: 0.9;" renderer="logarithmicDepthBuffer: true;">
-        <a-marker type="pattern" url="/markers/pattern-kototama.patt">
-          <!-- 認識確認用の赤い箱 -->
-          <a-box position="0 0 0" scale="1 1 1" color="red" opacity="0.5"></a-box>
-          <!-- 実際の画像 -->
-          <a-image 
-            src="${images[0]}" 
-            crossorigin="anonymous"
-            position="0 0.5 0" 
-            rotation="-90 0 0" 
-            scale="${scale * 2} ${scale * 2} ${scale * 2}"
-          ></a-image>
-        </a-marker>
-        <a-entity camera></a-entity>
-      </a-scene>
-    `;
-
-    return (
-      <>
-        <style dangerouslySetInnerHTML={{ __html: globalCss }} />
-        <Script src="https://aframe.io/releases/1.2.0/aframe.min.js" strategy="afterInteractive" onLoad={() => setAframeLoaded(true)} />
-        {aframeLoaded && <Script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js" strategy="afterInteractive" onLoad={() => setArjsLoaded(true)} />}
-        
-        {isArReady ? (
-          <div style={{ width: '100%', height: '100%', background: 'transparent' }} dangerouslySetInnerHTML={{ __html: arHtml }} />
-        ) : (
-          <div className="fixed inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
-            <p>カメラを起動中...</p>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  if (arMode === 'mindar') {
-    const targetSrc = mindFileUrl || ''; 
-    const mindArHtml = `
-      <a-scene mindar-image="imageTargetSrc: ${targetSrc};" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <a-entity mindar-image-target="targetIndex: 0">
-          <a-image 
-            src="${images[0]}" 
-            crossorigin="anonymous"
-            position="0 0 0" 
-            height="1" 
-            width="1"
-            scale="${scale} ${scale} ${scale}"
-          ></a-image>
-        </a-entity>
-      </a-scene>
-    `;
-
-    return (
-      <>
-        <style dangerouslySetInnerHTML={{ __html: globalCss }} />
-        <Script src="https://aframe.io/releases/1.3.0/aframe.min.js" strategy="afterInteractive" onLoad={() => setAframeLoaded(true)} />
-        {aframeLoaded && <Script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js" strategy="afterInteractive" onLoad={() => setArjsLoaded(true)} />}
-        
-        {isArReady ? (
-          <div style={{ width: '100%', height: '100%', background: 'transparent' }} dangerouslySetInnerHTML={{ __html: mindArHtml }} />
-        ) : (
-          <div className="fixed inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
-            <p>カメラを起動中...</p>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  return null;
+  // 💡 iframe を使って、Next.jsのCSSの影響を完全に遮断し独立稼働させる
+  return (
+    <iframe 
+      srcDoc={arHtml} 
+      style={{ width: '100vw', height: '100vh', border: 'none', position: 'fixed', top: 0, left: 0, zIndex: 10 }}
+      allow="camera; gyroscope; accelerometer; magnetometer"
+      title="AR Viewer"
+    />
+  );
 }
 
+// 💡 Next.js のビルドエラー回避用ラッパー（必須）
 export default function ARPage() {
   return (
-    <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-gray-900 text-white z-50">システム準備中...</div>}>
+    <Suspense fallback={
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827', color: 'white' }}>
+        システム準備中...
+      </div>
+    }>
       <ARViewer />
     </Suspense>
   );
