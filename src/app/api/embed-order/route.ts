@@ -152,11 +152,16 @@ https://kototama-ar.com/
 ==================================================
       `.trim();
 
-      // お客様への送信（同時にinfo宛にもBCCで送信）
+// お客様への送信（同時に運営側の複数アドレスへBCCで送信）
       await transporter.sendMail({
         from: `"ことたま" <${process.env.SMTP_USER}>`,
         to: email,
-        bcc: process.env.SMTP_USER,
+        // 💡 ここを配列 [ ] にして、カンマ区切りで増やしたいアドレスをクォーテーション('')で囲んで追加します
+        bcc: [
+          process.env.SMTP_USER,             // 元々のinfoアドレス
+          'shotake0222@gmail.com',           // 追加したいアドレス1
+          'shotaro6022@gmail.com'          // 追加したいアドレス2（何個でも増やせます）
+        ],
         subject: '【ことたま】ご注文を承りました',
         text: mailText,
       });
