@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import { v4 as uuidv4 } from 'uuid';
 
-// Supabaseクライアントの初期化（サーバーサイド用）
+// Supabaseクライアントの初期化
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -99,27 +99,26 @@ export async function POST(request: Request) {
     const getSetting = (key: string) => settings?.find(s => s.key === key)?.value || '';
 
     // ==========================================
-    // 4. サンクスメール（自動返信）の送信処理
+    // 4. メールの送信処理
     // ==========================================
     let mailErrorMsg = null;
     try {
-      // 💡 Vercelの環境変数 (SMTP_HOST, SMTP_USER, SMTP_PASS) が正しく設定されているか確認
       if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-        throw new Error('SMTP credentials are not configured in Vercel Environment Variables.');
+        throw new Error('SMTP credentials are not configured.');
       }
 
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST || 'sv***.xserver.jp',
         port: 465,
-        secure: true, // true for 465, false for other ports
+        secure: true, 
         auth: {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS,
         },
       });
 
-      // 💡 外部ファイル読み込みによるエラーを防ぐため、テンプレートを直接定義
-      const mailText = `
+      // 💡 ① お客様向けメールのテンプレート
+      const customerMailText = `
 ${customerName} 様
 
 この度は「ことたま」をご注文いただき、誠にありがとうございます。
@@ -140,16 +139,40 @@ ${optionDetails}
 口座番号：${getSetting('BANK_NUMBER')}
 口座名義：${getSetting('BANK_USER_NAME')}
 
-※お振込手数料はお客様のご負担にてお願いいたします。
 ※ご注文から7日以内にお振込が確認できない場合、自動キャンセルとなる場合がございます。
-
-ご不明な点がございましたら、本メールへの返信にてお問い合わせください。
-引き続きよろしくお願いいたします。
 
 ==================================================
 ことたま - 大切なメッセージを風化させないARキーホルダー
 https://kototama-ar.com/
 ==================================================
+      `.trim();
+
+      // 💡 ② 運営・管理者向けメールのテンプレート（admin_mail.txt 相当）
+      const adminMailText = `
+※このメールはシステムからの自動送信です。
+
+LPより「ことたま」の新規注文が入りました。
+管理ダッシュボードより内容をご確認ください。
+
+【注文日時】
+${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
+
+【お客様情報】
+氏名: ${customerName}
+メール: ${email}
+経路: ${clientId}
+
+【オプション・配送先詳細】
+${optionDetails}
+
+【決済情報】
+合計金額: ¥${totalPrice.toLocaleString()}
+ステータス: pending（未入金）
+
+【AR・画像情報】
+モード: ${arMode === 'mindar' ? 'イメージトラッキング(MindAR)' : '通常マーカー(Hiro)'}
+テンプレート指定: ${templateId || 'なし（画像アップロード）'}
+AR用URL: https://app.kototama-ar.com/ar?uid=${hashId}
       `.trim();
 
 // お客様への送信（同時に運営側の複数アドレスへBCCで送信）
@@ -159,25 +182,37 @@ https://kototama-ar.com/
         // 💡 ここを配列 [ ] にして、カンマ区切りで増やしたいアドレスをクォーテーション('')で囲んで追加します
         bcc: [
           process.env.SMTP_USER,             // 元々のinfoアドレス
-          'shotake0222@gmail.com',           // 追加したいアドレス1
-          'shotaro6022@gmail.com'          // 追加したいアドレス2（何個でも増やせます）
+          'shotaro6022@gmail.com',           // 追加したいアドレス1
+          'shotake0222@gmail.com'          // 追加したいアドレス2（何個でも増やせます）
         ],
         subject: '【ことたま】ご注文を承りました',
         text: mailText,
       });
+
+      // ✉️ 運営側へ別途送信
+      // 💡 配列になっているため、複数のアドレスを設定可能です
+      const adminEmails = [
+        process.env.SMTP_USER,         // メインのinfoアドレス
+        // 'admin2@example.com',       // 追加したい場合はここに書く
+      ];
+
+      await transporter.sendMail({
+        from: `"ことたまシステム" <${process.env.SMTP_USER}>`,
+        to: adminEmails,
+        subject: `【新規注文】${customerName} 様よりご注文が入りました`,
+        text: adminMailText,
+      });
       
-      console.log('✅ Mail sent successfully to:', email);
+      console.log('✅ Emails sent successfully to customer and admins.');
 
     } catch (mailError: any) {
       console.error('❌ Mail sending failed:', mailError);
-      mailErrorMsg = mailError.message; // エラーメッセージを保持
+      mailErrorMsg = mailError.message; 
     }
 
     // ==========================================
     // 5. フロントエンドへの完了レスポンス
     // ==========================================
-    // メール送信に失敗しても、注文自体は成功しているので success: true を返す
-    // ただし、デバッグ用に mail_status を追加
     return NextResponse.json({ 
       success: true, 
       hashId,
