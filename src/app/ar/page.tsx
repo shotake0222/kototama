@@ -13,9 +13,14 @@ function ARViewer() {
   
   const [images, setImages] = useState<string[]>([]);
   const [scale, setScale] = useState(1.0);
+  const [origin, setOrigin] = useState('');
+  
   const supabase = createClient();
 
   useEffect(() => {
+    // 💡 iframe内で絶対パスを使うために、現在のドメインを取得
+    setOrigin(window.location.origin);
+
     if (!uid) {
       setError('NFCタグの情報が読み取れません。もう一度タッチしてください。');
       setLoading(false);
@@ -36,6 +41,7 @@ function ARViewer() {
           return;
         }
 
+        // DBから画像のURLを生成
         const storageBase = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/ar_images/`;
         
         const imageUrls = data.order_images
@@ -73,7 +79,9 @@ function ARViewer() {
     );
   }
 
-  // 💡 ご提示いただいたDjango環境のコードを完全に再現し、写真撮影（スナップショット）機能のUIとロジックもそのまま組み込んでいます。
+  // 💡 相対パスでの読み込み失敗を防ぐため、絶対パス（https://.../markers/pattern-kototama.patt）を生成
+  const pattUrl = `${origin}/markers/pattern-kototama.patt`;
+
   const arHtml = `
 <!DOCTYPE html>
 <html lang="ja">
@@ -84,7 +92,6 @@ function ARViewer() {
   <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
-  
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
   <style>
@@ -93,73 +100,44 @@ function ARViewer() {
         overflow: hidden;
         background-color: transparent;
     }
-    .ui {
-        position: absolute;
-        z-index: 100;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: auto;
-        margin: 0;
-        padding: 10px 15px 30px;
-        text-align: center;
-        box-sizing: border-box;
-    }
-    .ui a {
-        display: inline-block;
-        width: 60px;
-        height: 60px;
-        background-color: #ffffff;
-        line-height: 100%;
-        color: #303030;
-        margin: 10px 3px;
-        border-radius: 50%;
-        position: relative;
-    }
-    .ui a i {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%,-50%);
-    }
-    .ui a:active {
-        color: #ff0000;
-    }
-
-    #snap {
-        max-width: 100%;
-        height: auto;
-        display: block;
-        visibility: hidden;
-        position: absolute;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 80%;
-        border: 4px solid white;
-        border-radius: 8px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        z-index: 99;
-    }
-    .ui a.disabled {
+    /* 以下はスナップショット用UIのCSS（前回と同じ） */
+    .ui { position: absolute; z-index: 100; bottom: 0; left: 0; width: 100%; height: auto; margin: 0; padding: 10px 15px 30px; text-align: center; box-sizing: border-box; }
+    .ui a { display: inline-block; width: 60px; height: 60px; background-color: #ffffff; line-height: 100%; color: #303030; margin: 10px 3px; border-radius: 50%; position: relative; }
+    .ui a i { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+    .ui a:active { color: #ff0000; }
+    #snap { max-width: 100%; height: auto; display: block; visibility: hidden; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 80%; border: 4px solid white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 99; }
+    .ui a.disabled { pointer-events: none; color: #cccccc; }
+    #snap.visible { visibility: visible; }
+    
+    /* 💡 状態確認用のデバッグパネル */
+    #debug-panel {
+        position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8);
+        padding: 8px; font-size: 12px; font-family: sans-serif; z-index: 999; border-radius: 4px;
         pointer-events: none;
-        color: #cccccc;
-    }
-    #snap.visible {
-        visibility: visible;
     }
   </style>
 </head>
 
 <body>
-  <!-- AR.js Engine -->
-  <a-scene embedded arjs="debugUIEnabled:false;trackingMethod:best;patternRatio: 0.9;" vr-mode-ui="enabled:false">
+  <!-- 💡 状態が一目でわかるデバッグパネル -->
+  <div id="debug-panel">
+    <div><b>マーカー状態:</b> <span id="marker-status" style="color:red; font-weight:bold;">見つかりません (LOST)</span></div>
+  </div>
+
+  <a-scene embedded arjs="debugUIEnabled:false;trackingMethod:best;patternRatio:0.9;" vr-mode-ui="enabled:false">
     <a-assets>
       <img id="ar-image" crossorigin="anonymous" src="${images[0]}">
     </a-assets>
     
-    <a-marker preset="custom" type="pattern" url="/markers/pattern-kototama.patt">
+    <!-- 💡 絶対パスで確実にマーカーを読み込む -->
+    <a-marker id="kototama-marker" preset="custom" type="pattern" url="${pattUrl}">
+      
+      <!-- 💡 テスト用の赤い箱。マーカーを認識していれば【必ず】出ます -->
+      <a-box position="0 0.5 0" color="red" opacity="0.6" scale="${scale} ${scale} ${scale}"></a-box>
+      
+      <!-- 💡 本命の画像 -->
       <a-image src="#ar-image" position="0 0 0" scale="${scale} ${scale} ${scale}" rotation="-90 0 0"></a-image>
+      
     </a-marker>
 
     <a-entity camera></a-entity>
@@ -173,8 +151,21 @@ function ARViewer() {
       <a href="#" id="download-photo" download="DownloadPhoto.png" title="Save Photo" class="disabled" target="_blank"><i class="material-icons">file_download</i></a>
   </div>
 
-  <!-- Snapshot Logic -->
   <script>
+      // 💡 マーカー認識のデバッグ用スクリプト
+      var marker = document.querySelector('#kototama-marker');
+      var statusText = document.querySelector('#marker-status');
+      
+      marker.addEventListener('markerFound', function() {
+          statusText.innerText = '認識しました！ (FOUND)';
+          statusText.style.color = 'green';
+      });
+      marker.addEventListener('markerLost', function() {
+          statusText.innerText = '見つかりません (LOST)';
+          statusText.style.color = 'red';
+      });
+
+      // 以下スナップショットロジック
       var image = document.querySelector('#snap');
       var take_photo_btn = document.querySelector('#take-photo');
       var delete_photo_btn = document.querySelector('#delete-photo');
@@ -215,10 +206,8 @@ function ARViewer() {
               resizedContext.drawImage(video, 0, 0, width, height);
 
               if (width > height) {
-                  // 横長（PC)
                   resizedContext.drawImage(aScene, 0, 0, width, height);
               } else {
-                  // 縦長（スマホ）
                   var scale = height / width;
                   var scaledWidth = height * scale;
                   var marginLeft = (width - scaledWidth) / 2;
@@ -232,7 +221,6 @@ function ARViewer() {
 </html>
   `;
 
-  // 💡 iframe を使って、Next.jsのCSSの影響を完全に遮断し独立稼働させる
   return (
     <iframe 
       srcDoc={arHtml} 
@@ -243,7 +231,6 @@ function ARViewer() {
   );
 }
 
-// 💡 Next.js のビルドエラー回避用ラッパー（必須）
 export default function ARPage() {
   return (
     <Suspense fallback={
