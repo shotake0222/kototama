@@ -18,7 +18,6 @@ function ARViewer() {
   const [images, setImages] = useState<string[]>([]);
   const [scale, setScale] = useState(1.0);
   
-  // 💡 スクリプトの確実なロード順序を管理するためのステート
   const [aframeLoaded, setAframeLoaded] = useState(false);
   const [arjsLoaded, setArjsLoaded] = useState(false);
   
@@ -87,12 +86,37 @@ function ARViewer() {
     );
   }
 
-  // 両方のスクリプトが読み込まれたか判定
   const isArReady = aframeLoaded && arjsLoaded;
 
-  // ====================================================
-  // 💡 【モード1】従来のAR.js（hiroマーカー）モード
-  // ====================================================
+  // 💡 AR.js のカメラ映像(videoタグ)が画面外に飛ばないように強制するCSS
+  const globalCss = `
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: transparent !important;
+    }
+    #arjs-video {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      z-index: -2 !important;
+    }
+    .a-canvas {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 10 !important;
+    }
+  `;
+
   if (arMode === 'hiro') {
     const arHtml = `
       <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;" renderer="logarithmicDepthBuffer: true;">
@@ -110,13 +134,13 @@ function ARViewer() {
 
     return (
       <>
-        {/* A-Frame を先に読み込む */}
+        <style dangerouslySetInnerHTML={{ __html: globalCss }} />
+        
         <Script 
           src="https://aframe.io/releases/1.2.0/aframe.min.js" 
           strategy="afterInteractive" 
           onLoad={() => setAframeLoaded(true)} 
         />
-        {/* A-Frame の読み込みが完了してから AR.js を読み込む */}
         {aframeLoaded && (
           <Script 
             src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js" 
@@ -125,8 +149,7 @@ function ARViewer() {
           />
         )}
         
-        {/* 💡 背景をtransparent（透明）にし、z-indexで適切に配置 */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 10, overflow: 'hidden', backgroundColor: 'transparent' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1, overflow: 'hidden' }}>
           {isArReady ? (
             <div dangerouslySetInnerHTML={{ __html: arHtml }} style={{ width: '100%', height: '100%' }} />
           ) : (
@@ -140,9 +163,6 @@ function ARViewer() {
     );
   }
 
-  // ====================================================
-  // 💡 【モード2】将来の MindAR（イメージトラッキング）モード
-  // ====================================================
   if (arMode === 'mindar') {
     const targetSrc = mindFileUrl || ''; 
     const mindArHtml = `
@@ -162,13 +182,13 @@ function ARViewer() {
 
     return (
       <>
-        {/* MindAR推奨の A-Frame v1.3.0 を読み込む */}
+        <style dangerouslySetInnerHTML={{ __html: globalCss }} />
+        
         <Script 
           src="https://aframe.io/releases/1.3.0/aframe.min.js" 
           strategy="afterInteractive" 
           onLoad={() => setAframeLoaded(true)} 
         />
-        {/* A-Frame の読み込み完了後に MindAR を読み込む */}
         {aframeLoaded && (
           <Script 
             src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js" 
@@ -177,8 +197,7 @@ function ARViewer() {
           />
         )}
         
-        {/* 💡 背景をtransparent（透明）にし、z-indexで適切に配置 */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 10, overflow: 'hidden', backgroundColor: 'transparent' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1, overflow: 'hidden' }}>
           {isArReady ? (
             <div dangerouslySetInnerHTML={{ __html: mindArHtml }} style={{ width: '100%', height: '100%' }} />
           ) : (
