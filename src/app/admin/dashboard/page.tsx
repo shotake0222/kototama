@@ -6,7 +6,7 @@ import Script from 'next/script';
 
 export default function Dashboard() {
   const supabase = createClient();
-  const [activeTab, setActiveTab] = useState<'orders' | 'images' | 'settings' | 'bulk'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'images' | 'settings' | 'bulk' | 'emails'>('orders');
   const [activeImageTab, setActiveImageTab] = useState<'processed' | 'original' | 'targets' | 'templates'>('processed');
   
   const [orders, setOrders] = useState<any[]>([]);
@@ -27,11 +27,26 @@ export default function Dashboard() {
   const [csvEncoding, setCsvEncoding] = useState<'UTF-8' | 'Shift_JIS'>('UTF-8');
   const [isCompiling, setIsCompiling] = useState(false);
 
+  // 💡 メール配信管理用のステート
+  const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [mailSubject, setMailSubject] = useState('');
+  const [mailBody, setMailBody] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [mailTemplateName, setMailTemplateName] = useState('');
+
   const fetchData = async () => {
     const { data: ordersData } = await supabase.from('orders').select('*, order_images(*)').order('created_at', { ascending: false });
     if (ordersData) setOrders(ordersData);
+    
     const { data: settingsData } = await supabase.from('system_settings').select('*').order('key', { ascending: true });
-    if (settingsData) setSettings(settingsData);
+    if (settingsData) {
+      setSettings(settingsData);
+      // メールテンプレートの抽出
+      const templatesData = settingsData.filter(s => s.key.startsWith('MAIL_TEMPLATE_'));
+      setEmailTemplates(templatesData);
+    }
+    
     const { data: storageData } = await supabase.storage.from('ar_images').list('templates', { limit: 100 });
     if (storageData) setTemplates(storageData.filter(f => f.name !== '.emptyFolderPlaceholder'));
   };
@@ -62,6 +77,20 @@ export default function Dashboard() {
       };
       reader.readAsDataURL(file);
     });
+  };
+
+  // 💡 ユーザー（注文）削除機能
+  const handleDeleteOrder = async (orderId: string, customerName: string) => {
+    if (!confirm(`本当に ${customerName} 様の注文データを完全に削除しますか？\n※この操作は取り消せません。`)) return;
+    try {
+      await supabase.from('order_images').delete().eq('order_id', orderId);
+      await supabase.from('orders').delete().eq('id', orderId);
+      fetchData();
+      alert('削除しました。');
+    } catch (err) {
+      console.error(err);
+      alert('削除に失敗しました。');
+    }
   };
 
   const handleUpdateNfcUid = async (orderId: string, currentUid: string | null) => {
@@ -240,7 +269,67 @@ export default function Dashboard() {
     setIsUploadingBulk(false); alert('一括処理が完了しました！'); setCsvData([]); setBulkImages([]); fetchData();
   };
 
-  // 💡 修正: 正しいサブドメイン app.kototama-ar.com に書き換え
+  // 💡 メールテンプレート保存
+  const handleSaveMailTemplate = async () => {
+    if (!mailTemplateName || !mailSubject || !mailBody) return alert('テンプレート名、件名、本文をすべて入力してください。');
+    const key = `MAIL_TEMPLATE_${Date.now()}`;
+    const value = JSON.stringify({ subject: mailSubject, body: mailBody });
+    await supabase.from('system_settings').insert({ key, name: mailTemplateName, value });
+    alert('テンプレートを保存しました。');
+    fetchData();
+    setMailTemplateName('');
+  };
+
+  // 💡 メールテンプレート適用
+  const handleApplyTemplate = (key: string) => {
+    const tmpl = emailTemplates.find(t => t.key === key);
+    if (tmpl) {
+      try {
+        const parsed = JSON.parse(tmpl.value);
+        setMailSubject(parsed.subject);
+        setMailBody(parsed.body);
+      } catch (e) {
+        setMailBody(tmpl.value);
+      }
+    }
+  };
+
+  // 💡 メール配信の実行（バックエンドのAPIへ送信）
+  const handleExecuteMailDelivery = async () => {
+    if (selectedOrderIds.length === 0) return alert('配信先のユーザーを選択してください。');
+    if (!mailSubject || !mailBody) return alert('件名と本文を入力してください。');
+    
+    const confirmMsg = scheduledTime 
+      ? `${selectedOrderIds.length}件のユーザーに\n【${scheduledTime.replace('T', ' ')}】に配信予約しますか？`
+      : `${selectedOrderIds.length}件のユーザーに\n【今すぐ】メールを配信しますか？`;
+      
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      // 実際にはAPIルートを作成し、そこでメール送信処理を行います。
+      // 例: await fetch('/api/send-mail', { method: 'POST', body: JSON.stringify({ targetOrderIds: selectedOrderIds, subject: mailSubject, body: mailBody, scheduledTime }) });
+      alert('配信リクエストが正常に処理されました！\n（※実際のメール送信にはバックエンドAPIの設定が必要です）');
+      setSelectedOrderIds([]);
+      setMailSubject('');
+      setMailBody('');
+      setScheduledTime('');
+    } catch (err) {
+      alert('エラーが発生しました。');
+    }
+  };
+
+  // 💡 全選択／解除
+  const handleSelectAllOrders = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) setSelectedOrderIds(orders.map(o => o.id));
+    else setSelectedOrderIds([]);
+  };
+
+  // 💡 個別選択／解除
+  const handleSelectOrder = (orderId: string) => {
+    if (selectedOrderIds.includes(orderId)) setSelectedOrderIds(selectedOrderIds.filter(id => id !== orderId));
+    else setSelectedOrderIds([...selectedOrderIds, orderId]);
+  };
+
   const generatedTag = clientId 
     ? `<div id="ar-order-form-container"></div>\n<script src="https://app.kototama-ar.com/embed.js" id="ar-embed-script" data-client-id="${clientId}"></script>`
     : '※クライアントIDを入力すると、ここにタグが表示されます。';
@@ -250,7 +339,7 @@ export default function Dashboard() {
       <Script src="https://cdn.tailwindcss.com" strategy="beforeInteractive" />
       <Script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image.prod.js" strategy="lazyOnload" />
 
-      {/* 💡 埋め込みサンプル用モーダル */}
+      {/* 埋め込みサンプル用モーダル */}
       {showEmbedModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 animate-fade-in">
@@ -308,13 +397,14 @@ export default function Dashboard() {
             <button onClick={() => setActiveTab('orders')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'orders' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📦 注文管理</button>
             <button onClick={() => setActiveTab('images')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'images' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>🖼️ 画像・マーカー管理</button>
             <button onClick={() => setActiveTab('settings')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>⚙️ システム設定</button>
-            <button onClick={() => setActiveTab('bulk')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'bulk' ? 'bg-green-600 text-white shadow-lg transform -translate-y-1' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📁 一括発注処理</button>
+            <button onClick={() => setActiveTab('bulk')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'bulk' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📁 一括発注処理</button>
+            <button onClick={() => setActiveTab('emails')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'emails' ? 'bg-indigo-600 text-white shadow-lg transform -translate-y-1' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📧 メール配信</button>
           </div>
 
+          {/* 注文管理 */}
           {activeTab === 'orders' && (
             <div className="space-y-8 animate-fade-in">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                {/* 💡 埋め込みサンプル確認ボタンを追加 */}
                 <div className="flex justify-between items-center mb-4 border-b pb-4">
                   <h2 className="text-lg font-bold text-blue-900">🔗 クライアント用 埋め込みタグ生成</h2>
                   <button onClick={() => setShowEmbedModal(true)} className="text-sm bg-blue-50 text-blue-600 border border-blue-200 px-4 py-2 rounded-lg font-bold hover:bg-blue-100 transition shadow-sm">
@@ -354,6 +444,8 @@ export default function Dashboard() {
                             <div className="flex gap-2">
                               <button onClick={() => handleUpdateScale(order.id, order.object_scale || 1.0)} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded-lg transition shadow-sm">x{order.object_scale || 1.0}変更</button>
                               <a href={`/ar?uid=${order.nfc_uid || order.hash_id}`} target="_blank" className="bg-blue-500 hover:bg-blue-600 text-white font-bold px-3 py-2 rounded-lg text-xs shadow transition">AR確認</a>
+                              {/* 💡 ユーザー削除ボタン */}
+                              <button onClick={() => handleDeleteOrder(order.id, order.customer_name)} className="bg-red-100 hover:bg-red-200 text-red-700 font-bold px-3 py-2 rounded-lg text-xs shadow-sm transition">削除</button>
                             </div>
                           </td>
                         </tr>
@@ -365,7 +457,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 画像・マーカー管理（省略なし） */}
+          {/* 画像・マーカー管理 */}
           {activeTab === 'images' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
               <div className="flex bg-gray-50 border-b overflow-x-auto">
@@ -438,7 +530,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* システム設定（省略なし） */}
+          {/* システム設定 */}
           {activeTab === 'settings' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
               <div className="p-6 bg-rose-50 border-b flex items-center justify-between flex-wrap gap-4">
@@ -449,7 +541,6 @@ export default function Dashboard() {
                 <button onClick={handleAddSetting} className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-5 py-2 rounded-lg shadow-sm transition whitespace-nowrap">＋ 新規設定を追加</button>
               </div>
               
-              {/* 💡 新しい商品を追加する手順のヒントを追加 */}
               <div className="p-6 bg-white border-b border-gray-100">
                 <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded text-sm text-blue-800">
                   <h4 className="font-bold mb-1">🛒 フォームに新しい商品（ラジオボタン）を追加するには？</h4>
@@ -476,7 +567,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 一括発注処理（省略なし） */}
+          {/* 一括発注処理 */}
           {activeTab === 'bulk' && (
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
@@ -530,6 +621,133 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+
+          {/* 💡 メール配信・テンプレート管理 */}
+          {activeTab === 'emails' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+              {/* 左側：メール作成フォーム・テンプレート */}
+              <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-xl font-bold mb-4 text-indigo-900 border-b pb-2">✉️ メール作成</h2>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">テンプレート読み込み</label>
+                  <select 
+                    onChange={(e) => handleApplyTemplate(e.target.value)} 
+                    className="w-full border p-2 rounded focus:outline-none focus:border-indigo-500 bg-gray-50"
+                  >
+                    <option value="">-- テンプレートを選択 --</option>
+                    {emailTemplates.map(tmpl => (
+                      <option key={tmpl.key} value={tmpl.key}>{tmpl.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">件名</label>
+                  <input 
+                    type="text" 
+                    value={mailSubject} 
+                    onChange={(e) => setMailSubject(e.target.value)} 
+                    placeholder="【重要】ご案内" 
+                    className="w-full border p-2 rounded focus:outline-none focus:border-indigo-500" 
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">本文</label>
+                  <textarea 
+                    rows={8} 
+                    value={mailBody} 
+                    onChange={(e) => setMailBody(e.target.value)} 
+                    placeholder="メール本文を入力してください。" 
+                    className="w-full border p-2 rounded focus:outline-none focus:border-indigo-500" 
+                  />
+                </div>
+
+                <div className="mb-6 p-4 bg-indigo-50 rounded border border-indigo-100">
+                  <label className="block text-sm font-bold text-indigo-900 mb-1">📅 配信日時 (空欄で即時配信)</label>
+                  <input 
+                    type="datetime-local" 
+                    value={scheduledTime} 
+                    onChange={(e) => setScheduledTime(e.target.value)} 
+                    className="w-full border p-2 rounded focus:outline-none focus:border-indigo-500" 
+                  />
+                </div>
+
+                <button 
+                  onClick={handleExecuteMailDelivery} 
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow transition mb-4"
+                >
+                  ▶ 選択したユーザーへ配信
+                </button>
+
+                <hr className="my-6 border-gray-200" />
+                
+                <h3 className="text-sm font-bold text-gray-600 mb-2">現在の内容をテンプレートとして保存</h3>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={mailTemplateName} 
+                    onChange={(e) => setMailTemplateName(e.target.value)} 
+                    placeholder="テンプレート名" 
+                    className="flex-1 border p-2 rounded text-sm focus:outline-none focus:border-indigo-500" 
+                  />
+                  <button onClick={handleSaveMailTemplate} className="bg-gray-800 text-white px-4 py-2 rounded text-sm hover:bg-gray-900 transition">保存</button>
+                </div>
+              </div>
+
+              {/* 右側：配信対象ユーザー選択 */}
+              <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[800px]">
+                <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+                  <div>
+                    <h2 className="font-bold text-gray-700 text-lg">👥 配信対象ユーザー選択</h2>
+                    <p className="text-sm text-gray-500">選択中: <span className="font-bold text-indigo-600">{selectedOrderIds.length}</span> 人</p>
+                  </div>
+                </div>
+                
+                <div className="overflow-y-auto flex-1">
+                  <table className="min-w-full text-sm text-left">
+                    <thead className="bg-white border-b sticky top-0 z-10 shadow-sm">
+                      <tr>
+                        <th className="p-3 text-center w-12">
+                          <input 
+                            type="checkbox" 
+                            onChange={handleSelectAllOrders} 
+                            checked={orders.length > 0 && selectedOrderIds.length === orders.length} 
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </th>
+                        <th className="p-3 font-bold text-gray-600">顧客名</th>
+                        <th className="p-3 font-bold text-gray-600">メールアドレス</th>
+                        <th className="p-3 font-bold text-gray-600">受注日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orders.map((order) => (
+                        <tr key={order.id} className={`border-b transition cursor-pointer hover:bg-indigo-50 ${selectedOrderIds.includes(order.id) ? 'bg-indigo-50' : ''}`} onClick={() => handleSelectOrder(order.id)}>
+                          <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedOrderIds.includes(order.id)} 
+                              onChange={() => handleSelectOrder(order.id)} 
+                              className="w-4 h-4 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-3 font-bold text-gray-800">{order.customer_name}</td>
+                          <td className="p-3 text-gray-500">{order.email}</td>
+                          <td className="p-3 text-gray-500">{new Date(order.created_at).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                      {orders.length === 0 && (
+                        <tr><td colSpan={4} className="p-8 text-center text-gray-400">ユーザーが存在しません</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </>

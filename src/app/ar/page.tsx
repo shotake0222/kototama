@@ -14,7 +14,7 @@ function ARViewer() {
   const [images, setImages] = useState<string[]>([]);
   
   // 💡 画像が小さいため、デフォルトの表示スケールを 1.0 から 2.0（2倍）に変更しました！
-  const [scale, setScale] = useState(2.0); 
+  const [scale, setScale] = useState(4.0); 
   
   const [origin, setOrigin] = useState('');
   
