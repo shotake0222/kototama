@@ -4,6 +4,18 @@ import { createClient } from '@/utils/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
 import Script from 'next/script';
 
+// 💡 アニメーションの定義リスト
+const ANIMATION_TYPES = [
+  { key: 'none', label: 'なし' },
+  { key: 'scroll', label: 'スクロール(下から上)' },
+  { key: 'scroll-down', label: 'スクロール(上から下)' },
+  { key: 'scroll-left', label: 'スクロール(右から左)' },
+  { key: 'scroll-right', label: 'スクロール(左から右)' },
+  { key: 'pulse', label: 'ふわふわ' },
+  { key: 'spin', label: '回転' },
+  { key: 'bounce', label: 'バウンド' }
+];
+
 export default function Dashboard() {
   const supabase = createClient();
   const [activeTab, setActiveTab] = useState<'orders' | 'images' | 'settings' | 'bulk' | 'emails'>('orders');
@@ -14,7 +26,6 @@ export default function Dashboard() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [clientId, setClientId] = useState('');
   
-  // 💡 埋め込みサンプルモーダル用のステート
   const [showEmbedModal, setShowEmbedModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,7 +38,6 @@ export default function Dashboard() {
   const [csvEncoding, setCsvEncoding] = useState<'UTF-8' | 'Shift_JIS'>('UTF-8');
   const [isCompiling, setIsCompiling] = useState(false);
 
-  // 💡 メール配信管理用のステート
   const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [mailSubject, setMailSubject] = useState('');
@@ -42,7 +52,6 @@ export default function Dashboard() {
     const { data: settingsData } = await supabase.from('system_settings').select('*').order('key', { ascending: true });
     if (settingsData) {
       setSettings(settingsData);
-      // メールテンプレートの抽出
       const templatesData = settingsData.filter(s => s.key.startsWith('MAIL_TEMPLATE_'));
       setEmailTemplates(templatesData);
     }
@@ -79,7 +88,6 @@ export default function Dashboard() {
     });
   };
 
-  // 💡 ユーザー（注文）削除機能
   const handleDeleteOrder = async (orderId: string, customerName: string) => {
     if (!confirm(`本当に ${customerName} 様の注文データを完全に削除しますか？\n※この操作は取り消せません。`)) return;
     try {
@@ -106,6 +114,29 @@ export default function Dashboard() {
     if (newScale && !isNaN(Number(newScale))) {
       await supabase.from('orders').update({ object_scale: Number(newScale) }).eq('id', orderId);
       fetchData();
+    }
+  };
+
+  // 💡 アニメーションの更新機能
+  const handleUpdateAnimation = async (orderId: string, currentType: string) => {
+    const currentLabel = ANIMATION_TYPES.find(t => t.key === (currentType || 'none'))?.label;
+    const menu = ANIMATION_TYPES.map((t, idx) => `${idx + 1}: ${t.label}`).join('\n');
+    
+    const input = prompt(`現在のアニメーション: ${currentLabel}\n\n変更する場合は以下の番号を入力してください:\n${menu}`, '');
+    if (!input) return;
+    
+    const selectedIdx = parseInt(input) - 1;
+    if (selectedIdx >= 0 && selectedIdx < ANIMATION_TYPES.length) {
+      const newType = ANIMATION_TYPES[selectedIdx].key;
+      try {
+        await supabase.from('orders').update({ animation_type: newType }).eq('id', orderId);
+        fetchData();
+        alert(`アニメーションを「${ANIMATION_TYPES[selectedIdx].label}」に変更しました。`);
+      } catch (err) {
+        alert('変更に失敗しました。');
+      }
+    } else {
+      alert('無効な番号です。');
     }
   };
 
@@ -177,7 +208,14 @@ export default function Dashboard() {
         await supabase.storage.from('ar_images').remove([uploadTarget.oldPath]);
       }
       fetchData();
-    } catch (err) { setIsCompiling(false); } finally { if (fileInputRef.current) fileInputRef.current.value = ''; setUploadTarget(null); }
+      alert('オブジェクト（画像）の差し替えが完了しました！');
+    } catch (err) { 
+      setIsCompiling(false); 
+      alert('画像のアップロードに失敗しました。');
+    } finally { 
+      if (fileInputRef.current) fileInputRef.current.value = ''; 
+      setUploadTarget(null); 
+    }
   };
 
   const handleDeleteImage = async (type: string, id?: string, path?: string) => {
@@ -191,6 +229,23 @@ export default function Dashboard() {
       }
       fetchData();
     } catch (err) { alert('削除に失敗しました。'); }
+  };
+
+  const handleDownloadSampleCsv = () => {
+    const csvContent = "氏名,メールアドレス,クライアントID,NFC_UID,種類,テンプレートID,画像ファイル名,アニメーション,性別,年齢,郵便番号,住所,備考\n" +
+                       "テスト 太郎,test@example.com,bulk_001,NFC-001,キーホルダー,,test_image1.jpg,none,男性,30,1000001,東京都千代田区,1枚アップロード\n" +
+                       "テスト 花子,test2@example.com,bulk_001,NFC-002,キーホルダー,T-01,,,女性,25,1000001,東京都千代田区,テンプレート使用\n" +
+                       "テスト 次郎,test3@example.com,bulk_001,NFC-003,リボンチャーム,,test_image2.jpg|test_image3.jpg,scroll,男性,40,1000001,東京都千代田区,アルバム＋スクロール";
+    
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "ことたま_一括登録サンプル.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,49 +282,62 @@ export default function Dashboard() {
     const getSettingNum = (key: string, def: number) => { const found = settings.find(s => s.key === key); return found && !isNaN(Number(found.value)) ? Number(found.value) : def; };
     const PRICE_TAX = getSettingNum('PRICE_TAX', 0.1);
     const PRICE_POSTAGE = getSettingNum('PRICE_POSTAGE', 380);
+    const PRICE_ALBUM = getSettingNum('PRICE_ALBUM', 2500);
+    const PRICE_ANIMATION = getSettingNum('PRICE_ANIMATION', 1000);
 
     for (let i = 0; i < csvData.length; i++) {
       const row = csvData[i];
-      const targetFileName = row['画像ファイル名'];
+      const targetFileNames = row['画像ファイル名'] ? row['画像ファイル名'].split(/[|]/).map((n: string) => n.trim()) : [];
       const templateId = row['テンプレートID'];
       const itemType = row['種類'] || 'キーホルダー';
       const nfcUid = row['NFC_UID'];
+      const animationType = row['アニメーション'] || 'none';
       
-      let uploadFile = null;
-      if (targetFileName) uploadFile = bulkImages.find(f => f.name === targetFileName);
+      const uploadFiles = targetFileNames.map((name: string) => bulkImages.find(f => f.name === name)).filter(Boolean);
 
-      const subTotal = 1500 + PRICE_POSTAGE; 
+      let subTotal = 1500 + PRICE_POSTAGE; 
+      if (uploadFiles.length > 1) subTotal += PRICE_ALBUM; 
+      if (animationType !== 'none') subTotal += PRICE_ANIMATION; 
+
       const total = subTotal + Math.floor(subTotal * PRICE_TAX);
-      const optionDetails = `【種類】${itemType}\n【画像】${templateId ? 'テンプレート' : 'アップロード'}\n【性別】${row['性別'] || ''}\n【年齢】${row['年齢'] || ''}\n【住所】〒${row['郵便番号'] || ''} ${row['住所'] || ''}\n【備考】${row['備考'] || ''}`;
+      const optionDetails = `【種類】${itemType}\n【画像】${templateId ? 'テンプレート' : 'アップロード'}\n【アニメーション】${animationType}\n【性別】${row['性別'] || ''}\n【年齢】${row['年齢'] || ''}\n【住所】〒${row['郵便番号'] || ''} ${row['住所'] || ''}\n【備考】${row['備考'] || ''}`;
 
       try {
-        let processedFileName = '';
+        const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
+        const { data: order, error: orderError } = await supabase.from('orders').insert({
+          customer_name: row['氏名'] || '名称未設定', 
+          email: row['メールアドレス'] || 'no-email@example.com',
+          hash_id: hashId, 
+          nfc_uid: nfcUid || null, 
+          total_price: total, 
+          status: 'pending', 
+          client_id: row['クライアントID'] || 'bulk_upload', 
+          option_details: optionDetails.trim(),
+          animation_type: animationType 
+        }).select().single();
+
+        if (orderError) throw orderError;
+
         if (templateId) {
           let formattedId = templateId.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s: string) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).toUpperCase().trim();
           formattedId = formattedId.replace(/ー|−|_/g, '-');
           if (!formattedId.includes('-')) formattedId = formattedId.replace('T', 'T-');
-          processedFileName = `templates/${formattedId}.jpg`;
-        } else if (uploadFile) {
-          const fileExt = uploadFile.name.split('.').pop();
-          processedFileName = `proc_bulk_${uuidv4()}.${fileExt}`;
-          await supabase.storage.from('ar_images').upload(processedFileName, uploadFile);
+          const processedFileName = `templates/${formattedId}.jpg`;
+          await supabase.from('order_images').insert({ order_id: order.id, original_image_url: null, processed_image_url: processedFileName });
+        } else if (uploadFiles.length > 0) {
+          for (const file of uploadFiles as File[]) {
+            const fileExt = file.name.split('.').pop();
+            const processedFileName = `proc_bulk_${uuidv4()}.${fileExt}`;
+            await supabase.storage.from('ar_images').upload(processedFileName, file);
+            await supabase.from('order_images').insert({ order_id: order.id, original_image_url: null, processed_image_url: processedFileName });
+          }
         }
-
-        const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
-        const { data: order, error: orderError } = await supabase.from('orders').insert({
-          customer_name: row['氏名'] || '名称未設定', email: row['メールアドレス'] || 'no-email@example.com',
-          hash_id: hashId, nfc_uid: nfcUid || null, total_price: total, status: 'pending', client_id: row['クライアントID'] || 'bulk_upload', option_details: optionDetails.trim()
-        }).select().single();
-
-        if (orderError) throw orderError;
-        if (processedFileName) { await supabase.from('order_images').insert({ order_id: order.id, original_image_url: null, processed_image_url: processedFileName }); }
       } catch (err) { console.error(`Row ${i + 1} Error:`, err); }
       setBulkProgress({ current: i + 1, total: csvData.length });
     }
     setIsUploadingBulk(false); alert('一括処理が完了しました！'); setCsvData([]); setBulkImages([]); fetchData();
   };
 
-  // 💡 メールテンプレート保存
   const handleSaveMailTemplate = async () => {
     if (!mailTemplateName || !mailSubject || !mailBody) return alert('テンプレート名、件名、本文をすべて入力してください。');
     const key = `MAIL_TEMPLATE_${Date.now()}`;
@@ -280,7 +348,6 @@ export default function Dashboard() {
     setMailTemplateName('');
   };
 
-  // 💡 メールテンプレート適用
   const handleApplyTemplate = (key: string) => {
     const tmpl = emailTemplates.find(t => t.key === key);
     if (tmpl) {
@@ -294,7 +361,6 @@ export default function Dashboard() {
     }
   };
 
-  // 💡 メール配信の実行（バックエンドのAPIへ送信）
   const handleExecuteMailDelivery = async () => {
     if (selectedOrderIds.length === 0) return alert('配信先のユーザーを選択してください。');
     if (!mailSubject || !mailBody) return alert('件名と本文を入力してください。');
@@ -306,8 +372,6 @@ export default function Dashboard() {
     if (!confirm(confirmMsg)) return;
 
     try {
-      // 実際にはAPIルートを作成し、そこでメール送信処理を行います。
-      // 例: await fetch('/api/send-mail', { method: 'POST', body: JSON.stringify({ targetOrderIds: selectedOrderIds, subject: mailSubject, body: mailBody, scheduledTime }) });
       alert('配信リクエストが正常に処理されました！\n（※実際のメール送信にはバックエンドAPIの設定が必要です）');
       setSelectedOrderIds([]);
       setMailSubject('');
@@ -318,13 +382,11 @@ export default function Dashboard() {
     }
   };
 
-  // 💡 全選択／解除
   const handleSelectAllOrders = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) setSelectedOrderIds(orders.map(o => o.id));
     else setSelectedOrderIds([]);
   };
 
-  // 💡 個別選択／解除
   const handleSelectOrder = (orderId: string) => {
     if (selectedOrderIds.includes(orderId)) setSelectedOrderIds(selectedOrderIds.filter(id => id !== orderId));
     else setSelectedOrderIds([...selectedOrderIds, orderId]);
@@ -397,8 +459,8 @@ export default function Dashboard() {
             <button onClick={() => setActiveTab('orders')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'orders' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📦 注文管理</button>
             <button onClick={() => setActiveTab('images')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'images' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>🖼️ 画像・マーカー管理</button>
             <button onClick={() => setActiveTab('settings')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>⚙️ システム設定</button>
-            <button onClick={() => setActiveTab('bulk')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'bulk' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📁 一括発注処理</button>
-            <button onClick={() => setActiveTab('emails')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'emails' ? 'bg-indigo-600 text-white shadow-lg transform -translate-y-1' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📧 メール配信</button>
+            <button onClick={() => setActiveTab('bulk')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'bulk' ? 'bg-green-600 text-white shadow-lg transform -translate-y-1' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📁 一括発注処理</button>
+            <button onClick={() => setActiveTab('emails')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'emails' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📧 メール配信</button>
           </div>
 
           {/* 注文管理 */}
@@ -422,34 +484,76 @@ export default function Dashboard() {
                   <table className="min-w-full text-sm text-left">
                     <thead className="bg-white border-b">
                       <tr>
-                        <th className="p-4 font-bold text-gray-600">受注日時 / ID</th><th className="p-4 font-bold text-gray-600">顧客名 / メール</th><th className="p-4 font-bold text-gray-600">オプション詳細</th><th className="p-4 font-bold text-gray-600">NFC UID / ARモード</th><th className="p-4 font-bold text-gray-600">操作</th>
+                        <th className="p-4 font-bold text-gray-600">受注日時 / ID</th>
+                        <th className="p-4 font-bold text-gray-600">顧客名 / メール</th>
+                        <th className="p-4 font-bold text-gray-600 text-center">表示オブジェクト</th>
+                        <th className="p-4 font-bold text-gray-600">オプション詳細</th>
+                        {/* 💡 ヘッダーを変更 */}
+                        <th className="p-4 font-bold text-gray-600">NFC / AR設定</th>
+                        <th className="p-4 font-bold text-gray-600">操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {orders.map((order) => (
+                      {orders.map((order) => {
+                        const imgData = order.order_images?.[0];
+                        const imgPath = imgData ? (imgData.processed_image_url || imgData.original_image_url) : null;
+                        const currentAnimLabel = ANIMATION_TYPES.find(t => t.key === (order.animation_type || 'none'))?.label;
+                        
+                        return (
                         <tr key={order.id} className="border-b hover:bg-blue-50 transition">
                           <td className="p-4"><div className="font-bold">{new Date(order.created_at).toLocaleDateString()}</div><div className="text-xs text-gray-400 mt-1 font-mono">{order.hash_id?.substring(0,8)}...</div></td>
                           <td className="p-4"><div className="font-bold text-gray-800">{order.customer_name}</div><div className="text-gray-500 text-xs mt-1">{order.email}</div></td>
+                          
+                          <td className="p-4 text-center">
+                            {imgPath ? (
+                              <div className="flex flex-col items-center gap-2">
+                                <img src={getImageUrl(imgPath)} alt="ARオブジェクト" className="w-16 h-16 object-contain bg-gray-100 rounded border border-gray-200" />
+                                <button 
+                                  onClick={() => triggerFileInput(imgData.processed_image_url ? 'processed' : 'original', imgData.id, imgPath)} 
+                                  className="text-xs font-bold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-3 py-1 rounded-full transition shadow-sm"
+                                >
+                                  🔄 差し替え
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs">未設定</span>
+                            )}
+                          </td>
+                          
                           <td className="p-4"><div className="text-gray-600 text-xs whitespace-pre-wrap bg-gray-50 p-2 rounded border max-w-xs overflow-auto max-h-24">{order.option_details || 'なし'}</div><div className="font-bold text-red-600 mt-2">合計: ¥{order.total_price?.toLocaleString() || 0}</div></td>
+                          
+                          {/* 💡 AR設定とアニメーション設定の表示 */}
                           <td className="p-4">
                             <div className="flex flex-col gap-2 items-start">
                               <div className="flex items-center gap-2">
                                 {order.nfc_uid ? <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-mono font-bold border border-green-200">{order.nfc_uid}</span> : <span className="text-gray-400 text-xs">未登録</span>}
                                 <button onClick={() => handleUpdateNfcUid(order.id, order.nfc_uid)} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded transition">更新</button>
                               </div>
-                              {order.ar_mode === 'mindar' ? <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded font-bold text-xs inline-block">MindAR</span> : <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold text-xs inline-block">Hiroマーカー</span>}
+                              <div className="flex gap-1 mt-1">
+                                {order.ar_mode === 'mindar' ? <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded font-bold text-xs inline-block">MindAR</span> : <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold text-xs inline-block">Hiroマーカー</span>}
+                                <span className={`px-2 py-1 rounded font-bold text-xs inline-block ${order.animation_type && order.animation_type !== 'none' ? 'bg-pink-100 text-pink-800' : 'bg-gray-100 text-gray-500'}`}>
+                                  {currentAnimLabel}
+                                </span>
+                              </div>
                             </div>
                           </td>
+                          
+                          {/* 💡 操作欄に「アニメ変更」を追加 */}
                           <td className="p-4 whitespace-nowrap">
-                            <div className="flex gap-2">
-                              <button onClick={() => handleUpdateScale(order.id, order.object_scale || 1.0)} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded-lg transition shadow-sm">x{order.object_scale || 1.0}変更</button>
-                              <a href={`/ar?uid=${order.nfc_uid || order.hash_id}`} target="_blank" className="bg-blue-500 hover:bg-blue-600 text-white font-bold px-3 py-2 rounded-lg text-xs shadow transition">AR確認</a>
-                              {/* 💡 ユーザー削除ボタン */}
-                              <button onClick={() => handleDeleteOrder(order.id, order.customer_name)} className="bg-red-100 hover:bg-red-200 text-red-700 font-bold px-3 py-2 rounded-lg text-xs shadow-sm transition">削除</button>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex gap-2">
+                                <a href={`/ar?uid=${order.nfc_uid || order.hash_id}`} target="_blank" className="bg-blue-500 hover:bg-blue-600 text-white font-bold px-3 py-2 rounded-lg text-xs shadow transition">AR確認</a>
+                                <button onClick={() => handleDeleteOrder(order.id, order.customer_name)} className="bg-red-100 hover:bg-red-200 text-red-700 font-bold px-3 py-2 rounded-lg text-xs shadow-sm transition">削除</button>
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => handleUpdateScale(order.id, order.object_scale || 1.0)} className="flex-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-2 rounded-lg transition shadow-sm text-center">x{order.object_scale || 1.0}変更</button>
+                                <button onClick={() => handleUpdateAnimation(order.id, order.animation_type || 'none')} className="flex-1 text-xs bg-pink-50 hover:bg-pink-100 border border-pink-200 text-pink-700 px-2 py-2 rounded-lg transition shadow-sm text-center">🎬 アニメ変更</button>
+                              </div>
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -571,7 +675,11 @@ export default function Dashboard() {
           {activeTab === 'bulk' && (
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-                <h2 className="text-2xl font-bold mb-4 text-green-800">CSVと画像フォルダによる一括登録</h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-2xl font-bold text-green-800">CSVと画像フォルダによる一括登録</h2>
+                  <button onClick={handleDownloadSampleCsv} className="bg-white border-2 border-green-500 text-green-600 font-bold px-4 py-2 rounded-lg shadow-sm hover:bg-green-50 transition">📥 サンプルCSVをダウンロード</button>
+                </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                   <div className="bg-green-50 p-6 rounded-lg border border-green-100">
                     <h3 className="font-bold text-green-900 mb-2">Step 1: CSVファイルの読み込み</h3>
@@ -583,6 +691,7 @@ export default function Dashboard() {
                   </div>
                   <div className="bg-green-50 p-6 rounded-lg border border-green-100">
                     <h3 className="font-bold text-green-900 mb-2">Step 2: 画像ファイル群の読み込み</h3>
+                    <p className="text-xs text-green-700 mb-2">※アルバムの場合は対象画像をすべて選択してください。</p>
                     <input type="file" multiple accept="image/*" onChange={handleBulkImagesUpload} className="w-full bg-white border p-2 rounded" />
                   </div>
                 </div>
@@ -591,18 +700,44 @@ export default function Dashboard() {
                     <h3 className="font-bold text-lg mb-4">マッチングプレビュー（全 {csvData.length} 件）</h3>
                     <div className="max-h-64 overflow-y-auto mb-6 bg-gray-50 border rounded">
                       <table className="min-w-full text-sm text-left">
-                        <thead className="bg-gray-100 sticky top-0"><tr><th className="p-3 border-b">氏名</th><th className="p-3 border-b">NFC_UID</th><th className="p-3 border-b">画像ファイル名</th><th className="p-3 border-b text-center">ステータス</th></tr></thead>
+                        <thead className="bg-gray-100 sticky top-0">
+                          <tr>
+                            <th className="p-3 border-b">氏名</th>
+                            <th className="p-3 border-b">画像ファイル名</th>
+                            <th className="p-3 border-b">演出</th>
+                            <th className="p-3 border-b text-center">ステータス</th>
+                          </tr>
+                        </thead>
                         <tbody>
                           {csvData.map((row, idx) => {
-                            const targetName = row['画像ファイル名'];
+                            const targetNames = row['画像ファイル名'] ? row['画像ファイル名'].split(/[|]/).map((n: string) => n.trim()) : [];
                             const isTemplate = !!row['テンプレートID'];
-                            const foundFile = targetName ? bulkImages.some(f => f.name === targetName) : false;
+                            const animation = row['アニメーション'];
+                            
+                            let foundFilesCount = 0;
+                            if (targetNames.length > 0) {
+                              targetNames.forEach((name: string) => {
+                                if (bulkImages.some(f => f.name === name)) foundFilesCount++;
+                              });
+                            }
+                            
                             let statusHtml = <span className="text-gray-400">-</span>;
-                            if (isTemplate) statusHtml = <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">テンプレート</span>;
-                            else if (targetName && foundFile) statusHtml = <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold">✅ 一致</span>;
-                            else if (targetName && !foundFile) statusHtml = <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-bold">❌ 画像不足</span>;
+                            if (isTemplate) {
+                              statusHtml = <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">テンプレート</span>;
+                            } else if (targetNames.length > 0) {
+                              if (foundFilesCount === targetNames.length) {
+                                statusHtml = <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold">✅ 一致 ({foundFilesCount}枚)</span>;
+                              } else {
+                                statusHtml = <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-bold">❌ 画像不足 ({foundFilesCount}/{targetNames.length})</span>;
+                              }
+                            }
                             return (
-                              <tr key={idx} className="border-b"><td className="p-2">{row['氏名'] || '無名'}</td><td className="p-2 font-mono text-xs">{row['NFC_UID'] || '-'}</td><td className="p-2 font-mono text-xs">{targetName}</td><td className="p-2 text-center">{statusHtml}</td></tr>
+                              <tr key={idx} className="border-b">
+                                <td className="p-2">{row['氏名'] || '無名'}</td>
+                                <td className="p-2 font-mono text-xs max-w-xs truncate">{row['画像ファイル名'] || '-'}</td>
+                                <td className="p-2 font-mono text-xs">{ANIMATION_TYPES.find(t => t.key === (animation || 'none'))?.label || 'なし'}</td>
+                                <td className="p-2 text-center">{statusHtml}</td>
+                              </tr>
                             );
                           })}
                         </tbody>
@@ -622,10 +757,9 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 💡 メール配信・テンプレート管理 */}
+          {/* メール配信・テンプレート管理 */}
           {activeTab === 'emails' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
-              {/* 左側：メール作成フォーム・テンプレート */}
               <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h2 className="text-xl font-bold mb-4 text-indigo-900 border-b pb-2">✉️ メール作成</h2>
                 
@@ -696,7 +830,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* 右側：配信対象ユーザー選択 */}
               <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[800px]">
                 <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
                   <div>

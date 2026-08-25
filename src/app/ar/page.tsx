@@ -12,10 +12,8 @@ function ARViewer() {
   const [error, setError] = useState<string | null>(null);
   
   const [images, setImages] = useState<string[]>([]);
-  
-  // 💡 DBに保存されている個別の倍率（デフォルトは1.0）
   const [scale, setScale] = useState(1.0); 
-  
+  const [animationType, setAnimationType] = useState('none');
   const [origin, setOrigin] = useState('');
   
   const supabase = createClient();
@@ -33,8 +31,9 @@ function ARViewer() {
       try {
         const { data, error } = await supabase
           .from('orders')
-          .select('*, order_images(*)')
+          .select('*, order_images(*)').order('created_at', { ascending: false })
           .or(`nfc_uid.eq.${uid},hash_id.eq.${uid}`)
+          .limit(1)
           .single();
 
         if (error || !data) {
@@ -51,9 +50,8 @@ function ARViewer() {
           .map((path: string) => storageBase + path);
         
         setImages(imageUrls);
-        
-        // DBに個別の倍率設定があれば上書き（なければ1.0のまま）
         if (data.object_scale) setScale(data.object_scale);
+        if (data.animation_type) setAnimationType(data.animation_type);
         
       } catch (err) {
         console.error(err);
@@ -83,11 +81,38 @@ function ARViewer() {
   }
 
   const pattUrl = `${origin}/markers/pattern-kototama.patt`;
-
-  // 💡 全体の基本となる大きさをここで設定します（例: 4.0 なら従来の4倍）
-  // 管理画面で 1.5倍 に設定した場合は、 4.0 × 1.5 = 6.0倍 で表示されます。
-  const BASE_SIZE = 2.0;
+  const BASE_SIZE = 4.0;
   const finalScale = scale * BASE_SIZE;
+
+  // 💡 多彩なアニメーションパターンの設定
+  let animationAttribute = '';
+  switch (animationType) {
+    case 'scroll': // 下から上
+      animationAttribute = 'animation="property: position; from: 0 0 1.5; to: 0 0 -1.5; dur: 15000; loop: true; easing: linear;"';
+      break;
+    case 'scroll-down': // 上から下
+      animationAttribute = 'animation="property: position; from: 0 0 -1.5; to: 0 0 1.5; dur: 15000; loop: true; easing: linear;"';
+      break;
+    case 'scroll-left': // 右から左
+      animationAttribute = 'animation="property: position; from: 1.5 0 0; to: -1.5 0 0; dur: 15000; loop: true; easing: linear;"';
+      break;
+    case 'scroll-right': // 左から右
+      animationAttribute = 'animation="property: position; from: -1.5 0 0; to: 1.5 0 0; dur: 15000; loop: true; easing: linear;"';
+      break;
+    case 'pulse': // ふわふわ・鼓動（スケールが大きくなったり小さくなったりする）
+      animationAttribute = `animation="property: scale; from: ${finalScale} ${finalScale} ${finalScale}; to: ${finalScale * 1.15} ${finalScale * 1.15} ${finalScale * 1.15}; dur: 1200; dir: alternate; loop: true; easing: easeInOutSine;"`;
+      break;
+    case 'spin': // 回転（レコードのようにクルクル回る）
+      animationAttribute = 'animation="property: rotation; from: -90 0 0; to: -90 0 360; dur: 8000; loop: true; easing: linear;"';
+      break;
+    case 'bounce': // バウンド（マーカーから少し浮き上がって弾む）
+      animationAttribute = 'animation="property: position; from: 0 0 0; to: 0 0.5 0; dur: 800; dir: alternate; loop: true; easing: easeOutQuad;"';
+      break;
+    default:
+      animationAttribute = '';
+  }
+
+  const imagesJson = JSON.stringify(images);
 
   const arHtml = `
 <!DOCTYPE html>
@@ -120,14 +145,12 @@ function ARViewer() {
     </a-assets>
     
     <a-marker id="kototama-marker" preset="custom" type="pattern" url="${pattUrl}">
-      <!-- 💡 計算された最終的な大きさを scale に適用 -->
-      <a-image src="#ar-image" position="0 0 0" scale="${finalScale} ${finalScale} ${finalScale}" rotation="-90 0 0"></a-image>
+      <a-image id="target-image" src="#ar-image" position="0 0 0" scale="${finalScale} ${finalScale} ${finalScale}" rotation="-90 0 0" ${animationAttribute}></a-image>
     </a-marker>
 
     <a-entity camera></a-entity>
   </a-scene>
 
-  <!-- スナップショット用UI -->
   <img id="snap">
   <div class="ui">
       <a href="#" id="delete-photo" title="Delete Photo" class="disabled"><i class="material-icons">delete</i></a>
@@ -136,6 +159,16 @@ function ARViewer() {
   </div>
 
   <script>
+      var imgArray = ${imagesJson};
+      if (imgArray.length > 1) {
+        var currentIndex = 0;
+        var targetImage = document.querySelector('#target-image');
+        setInterval(function() {
+          currentIndex = (currentIndex + 1) % imgArray.length;
+          targetImage.setAttribute('src', imgArray[currentIndex]);
+        }, 4000); 
+      }
+
       var image = document.querySelector('#snap');
       var take_photo_btn = document.querySelector('#take-photo');
       var delete_photo_btn = document.querySelector('#delete-photo');

@@ -4,8 +4,16 @@
   const scriptTag = document.getElementById('ar-embed-script');
   const clientId = scriptTag ? scriptTag.getAttribute('data-client-id') : 'direct';
 
-  // 💡 DBから設定を取得
-  let s = { PRICE_TEMPLATE: 500, PRICE_MIND_AR: 3000, PRICE_TAX: 0.1, PRICE_POSTAGE: 380, PRICE_KEY_RING: 1500, PRICE_CHARM: 2800 };
+  let s = { 
+    PRICE_TEMPLATE: 500, 
+    PRICE_MIND_AR: 3000, 
+    PRICE_ANIMATION: 1000, 
+    PRICE_ALBUM: 2500,
+    PRICE_TAX: 0.1, 
+    PRICE_POSTAGE: 380, 
+    PRICE_KEY_RING: 1500, 
+    PRICE_CHARM: 2800 
+  };
   let customProducts = [];
   
   try {
@@ -53,25 +61,30 @@
     .kt-form-container { width: 100%; max-width: 680px; margin: 0 auto; font-family: 'Zen Maru Gothic', sans-serif, system-ui; background: #ffffff; border-radius: 20px; box-shadow: 0 10px 40px -10px rgba(244,63,94,0.1); color: #374151; overflow: hidden; }
     .kt-section-title { font-size: 1.15rem; font-weight: 800; color: #881337; margin: 0; padding: 16px 24px; background: #fff1f2; border-left: 6px solid #f43f5e; display: flex; align-items: center; gap: 8px; }
     .kt-form-body { padding: 24px 32px; } .kt-form-group { margin-bottom: 24px; }
-    .kt-label { display: block; font-weight: 700; font-size: 0.9rem; margin-bottom: 8px; color: #4b5563; }
+    .kt-label { display: block; font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; color: #4b5563; }
     .kt-req, .kt-opt, .kt-new { color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
     .kt-req { background: #e11d48; } .kt-opt { background: #9ca3af; } .kt-new { background: #10b981; }
-    .kt-input, .kt-select, .kt-textarea { width: 100%; padding: 14px 16px; border: 2px solid #f3f4f6; border-radius: 10px; font-size: 1rem; box-sizing: border-box; background: #f9fafb; font-family: inherit; }
+    .kt-input, .kt-select, .kt-textarea { width: 100%; padding: 14px 16px; border: 2px solid #f3f4f6; border-radius: 10px; font-size: 1rem; box-sizing: border-box; background: #f9fafb; font-family: inherit; transition: all 0.2s; }
     .kt-input:focus, .kt-select:focus, .kt-textarea:focus { outline: none; border-color: #fb7185; background: #fff; box-shadow: 0 0 0 4px rgba(251,113,133,0.1); }
     .kt-flex-row { display: flex; gap: 16px; flex-wrap: wrap; } .kt-flex-col { flex: 1; min-width: 120px; }
     .kt-radio-group { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; }
-    .kt-radio-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem; font-weight: 500; background: #fdf2f8; padding: 10px 16px; border-radius: 8px; border: 2px solid transparent; flex: 1; min-width: 200px; line-height: 1.4; }
+    .kt-radio-label { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4px; cursor: pointer; font-size: 0.95rem; font-weight: 500; background: #fdf2f8; padding: 12px 16px; border-radius: 10px; border: 2px solid transparent; flex: 1; min-width: 200px; line-height: 1.4; transition: all 0.2s; }
+    .kt-radio-label-inner { display: flex; align-items: center; gap: 8px; width: 100%; }
+    .kt-radio-desc { font-size: 0.8rem; color: #6b7280; font-weight: normal; margin-left: 24px; line-height: 1.3; }
     .kt-radio-label:has(input:checked) { background: #fff1f2; border-color: #f43f5e; color: #be123c; font-weight: 700; }
-    .kt-btn-search { padding: 14px 20px; background: #ffe4e6; color: #e11d48; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
-    .kt-price-box { background: #fff1f2; padding: 20px; border-radius: 12px; margin-bottom: 24px; border: 2px solid #fecdd3; }
-    .kt-price-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95rem; color: #4b5563; }
-    .kt-price-row-total { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; border-top: 2px dashed #fda4af; padding-top: 12px; }
+    .kt-radio-label:has(input:checked) .kt-radio-desc { color: #9f1239; }
+    .kt-btn-search { padding: 14px 20px; background: #ffe4e6; color: #e11d48; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+    .kt-btn-search:hover { background: #fecdd3; }
+    .kt-price-box { background: #fff1f2; padding: 24px; border-radius: 16px; margin-bottom: 24px; border: 2px solid #fecdd3; }
+    .kt-price-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; color: #4b5563; }
+    .kt-price-row-total { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; border-top: 2px dashed #fda4af; padding-top: 16px; }
     .kt-price-val { font-weight: 700; color: #111827; } .kt-total-val { color: #e11d48; font-size: 1.8rem; font-weight: 900; }
-    .kt-submit-btn { width: 100%; padding: 20px; background: linear-gradient(135deg, #f43f5e, #e11d48); color: #fff; border: none; border-radius: 50px; font-size: 1.2rem; font-weight: 800; cursor: pointer; transition: background 0.3s; }
-    .kt-submit-btn:disabled { background: #9ca3af; cursor: not-allowed; }
-    .kt-file-area { background: #fff; border: 2px dashed #fda4af; padding: 16px; border-radius: 10px; text-align: center; }
+    .kt-submit-btn { width: 100%; padding: 20px; background: linear-gradient(135deg, #f43f5e, #e11d48); color: #fff; border: none; border-radius: 50px; font-size: 1.2rem; font-weight: 800; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 15px rgba(225, 29, 72, 0.3); }
+    .kt-submit-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(225, 29, 72, 0.4); }
+    .kt-submit-btn:disabled { background: #9ca3af; cursor: not-allowed; transform: none; box-shadow: none; }
+    .kt-file-area { background: #fff; border: 2px dashed #fda4af; padding: 20px; border-radius: 12px; text-align: center; cursor: pointer; transition: background 0.2s; }
+    .kt-file-area:hover { background: #fff1f2; }
     
-    /* モーダル用CSS */
     .kt-modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(17, 24, 39, 0.85); z-index: 999999; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
     .kt-modal-content { background: #fff; width: 95%; max-width: 600px; border-radius: 20px; padding: 32px; text-align: center; position: relative; animation: kt-pop 0.3s ease-out; }
     @keyframes kt-pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
@@ -87,6 +100,7 @@
   container.innerHTML = `
     <div class="kt-form-container">
       <form id="ar-embed-form">
+        
         <h3 class="kt-section-title">👤 お客様情報</h3>
         <div class="kt-form-body">
           <div class="kt-form-group"><label class="kt-label">氏名 <span class="kt-req">必須</span></label><input type="text" id="kt-name" class="kt-input" required /></div>
@@ -105,7 +119,7 @@
           <div class="kt-form-group"><label class="kt-label">建物名・号室 <span class="kt-opt">任意</span></label><input type="text" id="kt-building" class="kt-input" /></div>
         </div>
 
-        <h3 class="kt-section-title">🎁 ご注文内容</h3>
+        <h3 class="kt-section-title">🎁 基本のご注文内容</h3>
         <div class="kt-form-body">
           <div class="kt-form-group">
             <label class="kt-label">商品の種類 <span class="kt-req">必須</span></label>
@@ -114,36 +128,99 @@
             </div>
           </div>
           <div class="kt-form-group">
-            <label class="kt-label">画像の選択方法 <span class="kt-req">必須</span></label>
-            <div class="kt-radio-group">
-              <label class="kt-radio-label"><input type="radio" name="imageType" value="アップロード" checked> 画像をアップロード</label>
-              <label class="kt-radio-label"><input type="radio" name="imageType" value="テンプレート"> テンプレートから選ぶ (+${s.PRICE_TEMPLATE.toLocaleString()}円)</label>
-            </div>
-          </div>
-          
-          <div class="kt-form-group" id="kt-file-group">
-            <label class="kt-label">画像 / 動画 <span class="kt-req">必須</span></label>
-            <div class="kt-file-area">
-              <input type="file" id="kt-file" class="kt-input" accept="image/*,video/mp4,video/webm" style="border: none; background: transparent; padding: 0;" required />
-              <div id="kt-file-status" style="margin-top:12px; color:#be123c; font-weight:bold; display:none;"></div>
-            </div>
-          </div>
-          <div class="kt-form-group" id="kt-template-group" style="display: none;">
-            <label class="kt-label">ご希望のテンプレート番号 <span class="kt-req">必須</span></label>
-            <input type="text" id="kt-template-id" class="kt-input" placeholder="例：T-01" />
-          </div>
-
-          <div class="kt-form-group" id="kt-ar-mode-group">
             <label class="kt-label">ARの再生モード <span class="kt-new">オススメ</span></label>
             <div class="kt-radio-group">
               <label class="kt-radio-label">
-                <input type="radio" name="arMode" value="hiro" checked> 
-                通常マーカー読込（無料）<br><span style="font-size:0.8rem; font-weight:normal; display:block; margin-top:4px;">※画面上にマーカーを映して再生します。</span>
+                <div class="kt-radio-label-inner"><input type="radio" name="arMode" value="hiro" checked> 通常マーカー読込（無料）</div>
+                <div class="kt-radio-desc">共通のマーカーをカメラに映して再生します。</div>
               </label>
               <label class="kt-radio-label">
-                <input type="radio" name="arMode" value="mindar"> 
-                イメージトラッキング (+${s.PRICE_MIND_AR.toLocaleString()}円)<br><span style="font-size:0.8rem; font-weight:normal; display:block; margin-top:4px;">※商品そのもの（写真）をカメラで認識して再生します。</span>
+                <div class="kt-radio-label-inner"><input type="radio" name="arMode" value="mindar"> イメージトラッキング (+${s.PRICE_MIND_AR.toLocaleString()}円)</div>
+                <div class="kt-radio-desc">商品そのもの（写真）をカメラで認識して再生します。</div>
               </label>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="kt-section-title" id="kt-section-target" style="display:none; background:#ecfdf5; border-color:#10b981;">🎯 マーカーとなる画像</h3>
+        <div class="kt-form-body" id="kt-body-target" style="display:none; padding-bottom:0;">
+          <div class="kt-form-group" style="margin-bottom:0;">
+            <label class="kt-label">カメラにかざす写真（ターゲット画像） <span class="kt-req" style="background:#10b981;">必須</span></label>
+            <p style="font-size:0.85rem; color:#4b5563; margin-bottom:12px;">※ARを起動する「鍵」となる画像をアップロードしてください。（商品に印刷される写真など）</p>
+            <div class="kt-file-area" style="border-color:#34d399;">
+              <input type="file" id="kt-target-file" class="kt-input" accept="image/*" style="border: none; background: transparent; padding: 0;" />
+            </div>
+          </div>
+        </div>
+
+        <h3 class="kt-section-title">🖼️ 浮かび上がる画像・演出</h3>
+        <div class="kt-form-body">
+          <div class="kt-form-group">
+            <label class="kt-label">画像の選択方法 <span class="kt-req">必須</span></label>
+            <div class="kt-radio-group">
+              <label class="kt-radio-label">
+                <div class="kt-radio-label-inner"><input type="radio" name="imageType" value="アップロード" checked> 画像をアップロードする</div>
+              </label>
+              <label class="kt-radio-label">
+                <div class="kt-radio-label-inner"><input type="radio" name="imageType" value="テンプレート"> テンプレートから選ぶ (+${s.PRICE_TEMPLATE.toLocaleString()}円)</div>
+              </label>
+            </div>
+          </div>
+          
+          <div id="kt-group-template" style="display: none; background: #f9fafb; padding: 20px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #e5e7eb;">
+            <div class="kt-form-group" style="margin-bottom:0;">
+              <label class="kt-label">ご希望のテンプレート番号 <span class="kt-req">必須</span></label>
+              <input type="text" id="kt-template-id" class="kt-input" placeholder="例：T-01" />
+            </div>
+          </div>
+
+          <div id="kt-group-upload" style="background: #f9fafb; padding: 20px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #e5e7eb;">
+            <div class="kt-form-group">
+              <label class="kt-label">表示オプション（枚数） <span class="kt-req">必須</span></label>
+              <div class="kt-radio-group">
+                <label class="kt-radio-label">
+                  <div class="kt-radio-label-inner"><input type="radio" name="displayOption" value="single" checked> 1枚の画像を表示（無料）</div>
+                </label>
+                <label class="kt-radio-label">
+                  <div class="kt-radio-label-inner"><input type="radio" name="displayOption" value="album"> アルバム機能 (+${s.PRICE_ALBUM.toLocaleString()}円)</div>
+                  <div class="kt-radio-desc">複数枚の画像がスライドショーのように切り替わります。</div>
+                </label>
+              </div>
+            </div>
+
+            <!-- 💡 新しくなったアニメーション選択エリア -->
+            <div class="kt-form-group">
+              <label class="kt-label">アニメーション（動き） <span class="kt-opt">任意</span></label>
+              <div class="kt-radio-group">
+                <label class="kt-radio-label">
+                  <div class="kt-radio-label-inner"><input type="radio" name="animationToggle" value="none" checked> なし（無料）</div>
+                </label>
+                <label class="kt-radio-label">
+                  <div class="kt-radio-label-inner"><input type="radio" name="animationToggle" value="add"> アニメーションを追加 (+${s.PRICE_ANIMATION.toLocaleString()}円)</div>
+                  <div class="kt-radio-desc">画像が動く特別な演出を追加します。</div>
+                </label>
+              </div>
+              
+              <div id="kt-animation-details" style="display: none; margin-top: 12px; padding: 16px; background: #fff; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <label class="kt-label" style="font-size:0.85rem;">動きのパターンを選択 <span class="kt-req" style="background:#10b981;">必須</span></label>
+                <select id="kt-animation-pattern" class="kt-select">
+                  <option value="scroll">スクロール (下から上へ流れる)</option>
+                  <option value="scroll-down">スクロール (上から下へ流れる)</option>
+                  <option value="scroll-left">スクロール (右から左へ流れる)</option>
+                  <option value="scroll-right">スクロール (左から右へ流れる)</option>
+                  <option value="pulse">ふわふわ (鼓動のように拡大縮小)</option>
+                  <option value="spin">回転 (レコードのように回る)</option>
+                  <option value="bounce">バウンド (上に弾む)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="kt-form-group" style="margin-bottom:0;">
+              <label class="kt-label">浮かび上がる画像 <span class="kt-req">必須</span></label>
+              <div class="kt-file-area">
+                <input type="file" id="kt-file" class="kt-input" accept="image/*" style="border: none; background: transparent; padding: 0;" required />
+                <div id="kt-file-status" style="margin-top:12px; color:#be123c; font-weight:bold; display:none;"></div>
+              </div>
             </div>
           </div>
 
@@ -161,10 +238,12 @@
       </form>
     </div>
     
-    <!-- トリミング用モーダル -->
     <div id="kt-crop-modal" class="kt-modal-overlay">
       <div class="kt-modal-content">
         <h3 style="margin-top:0; color:#881337; text-align:left;">✂️ 画像のトリミング</h3>
+        <p style="font-size: 0.85rem; color: #4b5563; text-align: left; margin-bottom: 12px; line-height:1.4;">
+          浮かび上がる画像の形を整えます。<br>※アルバム（複数枚）を選択した場合は、1枚目のみトリミングが行われます。
+        </p>
         <div class="kt-crop-container"><img id="kt-crop-image" src="" style="max-width: 100%; display: block;" /></div>
         <div class="kt-modal-actions">
           <button type="button" id="kt-btn-crop-cancel" class="kt-btn-cancel">キャンセル</button>
@@ -173,7 +252,6 @@
       </div>
     </div>
 
-    <!-- サンクスモーダル（送信完了後に表示） -->
     <div id="kt-thanks-modal" class="kt-modal-overlay">
       <div class="kt-modal-content" style="max-width: 500px;">
         <div style="font-size: 5rem; margin-bottom: 16px; animation: bounce 1s infinite;">🎉</div>
@@ -188,61 +266,104 @@
     </div>
   `;
 
-  let cropperInstance = null, croppedBlob = null, originalFile = null;
-  const fileInput = document.getElementById('kt-file'), cropModal = document.getElementById('kt-crop-modal'), cropImage = document.getElementById('kt-crop-image');
+  let cropperInstance = null, croppedBlob = null;
+  let selectedFiles = []; 
+  
+  const fileInput = document.getElementById('kt-file');
+  const cropModal = document.getElementById('kt-crop-modal');
+  const cropImage = document.getElementById('kt-crop-image');
   const thanksModal = document.getElementById('kt-thanks-modal');
 
-  // ... (ファイル選択・トリミング・金額計算の処理は変更なし) ...
   fileInput.addEventListener('change', (e) => {
-    originalFile = e.target.files[0];
-    if (!originalFile) return;
-    if (originalFile.type.startsWith('video/')) {
+    selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length === 0) return;
+    
+    const firstFile = selectedFiles[0];
+    if (firstFile.type.startsWith('video/')) {
       alert('動画は現在準備中です。画像をご選択ください。'); fileInput.value = ''; return;
     }
+    
     const reader = new FileReader();
     reader.onload = (event) => {
       cropImage.src = event.target.result; cropModal.style.display = 'flex';
       if (cropperInstance) cropperInstance.destroy();
       cropperInstance = new window.Cropper(cropImage, { viewMode: 1, autoCropArea: 0.9, background: false });
     };
-    reader.readAsDataURL(originalFile);
+    reader.readAsDataURL(firstFile);
   });
 
   document.getElementById('kt-btn-crop-confirm').addEventListener('click', () => {
     cropperInstance.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 }).toBlob((blob) => {
       croppedBlob = blob; cropModal.style.display = 'none';
       document.getElementById('kt-file-status').style.display = 'block';
-      document.getElementById('kt-file-status').textContent = '✅ トリミング完了';
+      let statusText = '✅ 1枚目のトリミング完了';
+      if (selectedFiles.length > 1) statusText += `（他 ${selectedFiles.length - 1} 枚）`;
+      document.getElementById('kt-file-status').textContent = statusText;
     }, 'image/jpeg', 0.85);
   });
   
   document.getElementById('kt-btn-crop-cancel').addEventListener('click', () => {
     cropModal.style.display = 'none'; croppedBlob = null;
     document.getElementById('kt-file-status').style.display = 'block';
-    document.getElementById('kt-file-status').textContent = '※ 元画像を使用します';
+    let statusText = '※ 元画像を使用します';
+    if (selectedFiles.length > 1) statusText += `（全 ${selectedFiles.length} 枚選択中）`;
+    document.getElementById('kt-file-status').textContent = statusText;
   });
 
+  // 💡 フォームの表示切替と金額計算
   const updateFormState = () => {
     const selectedItem = document.querySelector('input[name="itemType"]:checked');
-    const imageType = document.querySelector('input[name="imageType"]:checked').value;
     const arMode = document.querySelector('input[name="arMode"]:checked').value;
+    const imageType = document.querySelector('input[name="imageType"]:checked').value;
+    const displayOption = document.querySelector('input[name="displayOption"]:checked').value;
     
-    const arModeGroup = document.getElementById('kt-ar-mode-group');
-    if (imageType === 'テンプレート') {
-      document.getElementById('kt-file-group').style.display = 'none'; fileInput.removeAttribute('required');
-      document.getElementById('kt-template-group').style.display = 'block'; document.getElementById('kt-template-id').setAttribute('required', 'true');
-      arModeGroup.style.display = 'none'; document.querySelector('input[name="arMode"][value="hiro"]').checked = true; 
+    // アニメーションのトグル判定
+    const isAnimated = document.querySelector('input[name="animationToggle"]:checked').value === 'add';
+    
+    if (arMode === 'mindar') {
+      document.getElementById('kt-section-target').style.display = 'flex';
+      document.getElementById('kt-body-target').style.display = 'block';
+      document.getElementById('kt-target-file').setAttribute('required', 'true');
     } else {
-      document.getElementById('kt-file-group').style.display = 'block'; fileInput.setAttribute('required', 'true');
-      document.getElementById('kt-template-group').style.display = 'none'; document.getElementById('kt-template-id').removeAttribute('required');
-      arModeGroup.style.display = 'block'; 
+      document.getElementById('kt-section-target').style.display = 'none';
+      document.getElementById('kt-body-target').style.display = 'none';
+      document.getElementById('kt-target-file').removeAttribute('required');
     }
 
-    const currentArMode = document.querySelector('input[name="arMode"]:checked').value;
+    if (imageType === 'テンプレート') {
+      document.getElementById('kt-group-upload').style.display = 'none';
+      document.getElementById('kt-group-template').style.display = 'block';
+      fileInput.removeAttribute('required');
+      document.getElementById('kt-template-id').setAttribute('required', 'true');
+    } else {
+      document.getElementById('kt-group-upload').style.display = 'block';
+      document.getElementById('kt-group-template').style.display = 'none';
+      fileInput.setAttribute('required', 'true');
+      document.getElementById('kt-template-id').removeAttribute('required');
+    }
+
+    if (displayOption === 'album') {
+      fileInput.setAttribute('multiple', 'true');
+    } else {
+      fileInput.removeAttribute('multiple');
+    }
+
+    // 💡 アニメーション詳細のプルダウン表示切替
+    if (isAnimated) {
+      document.getElementById('kt-animation-details').style.display = 'block';
+    } else {
+      document.getElementById('kt-animation-details').style.display = 'none';
+    }
+
     const basePrice = selectedItem ? Number(selectedItem.dataset.price) : 0;
+    const optMindArPrice = arMode === 'mindar' ? s.PRICE_MIND_AR : 0;
     const optTemplatePrice = imageType === 'テンプレート' ? s.PRICE_TEMPLATE : 0;
-    const optMindArPrice = currentArMode === 'mindar' ? s.PRICE_MIND_AR : 0;
-    const totalOptionPrice = optTemplatePrice + optMindArPrice;
+    const optAlbumPrice = (imageType === 'アップロード' && displayOption === 'album') ? s.PRICE_ALBUM : 0;
+    
+    // 💡 アニメーションが「追加」になっている場合のみ課金
+    const optAnimationPrice = (imageType === 'アップロード' && isAnimated) ? s.PRICE_ANIMATION : 0;
+    
+    const totalOptionPrice = optMindArPrice + optTemplatePrice + optAlbumPrice + optAnimationPrice;
 
     const subTotal = basePrice + totalOptionPrice + s.PRICE_POSTAGE;
     const tax = Math.floor(subTotal * s.PRICE_TAX);
@@ -254,7 +375,12 @@
     document.getElementById('disp-total').textContent = total.toLocaleString() + '円';
     window.currentTotalPrice = total;
   };
+  
   document.querySelectorAll('input[type="radio"]').forEach(r => r.addEventListener('change', updateFormState));
+  
+  // セレクトボックス変更時も発火させる（必須ではないですが念のため）
+  document.getElementById('kt-animation-pattern')?.addEventListener('change', updateFormState);
+  
   updateFormState();
 
   document.getElementById('kt-zip-btn').addEventListener('click', async () => {
@@ -288,11 +414,12 @@
     });
   };
 
-  // 💡 サンクスモーダルを閉じる処理
   document.getElementById('kt-btn-close-thanks').addEventListener('click', () => {
     thanksModal.style.display = 'none';
-    // フォームをリセットする
     document.getElementById('ar-embed-form').reset();
+    selectedFiles = [];
+    croppedBlob = null;
+    document.getElementById('kt-file-status').style.display = 'none';
     updateFormState();
   });
 
@@ -302,40 +429,72 @@
     btn.disabled = true; 
 
     const itemType = document.querySelector('input[name="itemType"]:checked').value;
-    const imageType = document.querySelector('input[name="imageType"]:checked').value;
     const arMode = document.querySelector('input[name="arMode"]:checked').value;
+    const imageType = document.querySelector('input[name="imageType"]:checked').value;
+    const displayOption = document.querySelector('input[name="displayOption"]')?.checked ? document.querySelector('input[name="displayOption"]:checked').value : 'single';
     
-    const optionDetails = `【種類】${itemType}\n【画像】${imageType}\n【AR再生】${arMode === 'mindar' ? 'イメージトラッキング (+3000円)' : '通常マーカー読込'}\n【性別】${document.getElementById('kt-gender').value}\n【年齢】${document.getElementById('kt-age').value}歳\n【住所】〒${document.getElementById('kt-zip').value} ${document.getElementById('kt-pref').value}${document.getElementById('kt-city').value} ${document.getElementById('kt-building').value}\n【備考】${document.getElementById('kt-memo').value}`;
+    // 💡 アニメーションパターンの取得
+    const isAnimated = document.querySelector('input[name="animationToggle"]')?.checked ? document.querySelector('input[name="animationToggle"]:checked').value === 'add' : false;
+    const finalAnimType = isAnimated ? document.getElementById('kt-animation-pattern').value : 'none';
+
+    // 💡 管理画面でわかりやすいように日本語名に変換
+    const animNames = {
+      'scroll': 'スクロール(下から上)', 'scroll-down': 'スクロール(上から下)', 'scroll-left': 'スクロール(右から左)', 'scroll-right': 'スクロール(左から右)',
+      'pulse': 'ふわふわ', 'spin': '回転', 'bounce': 'バウンド', 'none': 'なし'
+    };
+    
+    let optionsText = `【種類】${itemType}\n【AR再生】${arMode === 'mindar' ? 'イメージトラッキング (+3000円)' : '通常マーカー読込'}\n【画像】${imageType}`;
+    if (imageType === 'アップロード') {
+      optionsText += `\n【表示OP】${displayOption === 'album' ? 'アルバム (+2500円)' : '単一画像'}`;
+      optionsText += `\n【アニメ】${isAnimated ? animNames[finalAnimType] + ' (+1000円)' : 'なし'}`;
+    }
+    optionsText += `\n【性別】${document.getElementById('kt-gender').value}\n【年齢】${document.getElementById('kt-age').value}歳\n【住所】〒${document.getElementById('kt-zip').value} ${document.getElementById('kt-pref').value}${document.getElementById('kt-city').value} ${document.getElementById('kt-building').value}\n【備考】${document.getElementById('kt-memo').value}`;
 
     const formData = new FormData();
     formData.append('customerName', document.getElementById('kt-name').value);
     formData.append('email', document.getElementById('kt-email').value);
     formData.append('clientId', clientId);
-    formData.append('optionDetails', optionDetails);
+    formData.append('optionDetails', optionsText);
     formData.append('totalPrice', window.currentTotalPrice);
+    formData.append('animationType', finalAnimType); // 💡 バックエンドへ詳細パターンを送信
     
     if (imageType === 'テンプレート') {
       formData.append('templateId', document.getElementById('kt-template-id').value);
       btn.textContent = '送信中...';
     } else {
-      const targetBlob = croppedBlob || originalFile;
       if (arMode === 'mindar') {
+        const targetImageFile = document.getElementById('kt-target-file').files[0];
+        if (!targetImageFile) {
+          alert('マーカー用画像を選択してください。');
+          btn.disabled = false; return;
+        }
         btn.textContent = 'ARデータ生成中... (数秒かかります)';
         try {
-          const mindBlob = await compileImageToMind(targetBlob);
+          const mindBlob = await compileImageToMind(targetImageFile);
           formData.append('mindFile', new File([mindBlob], 'target.mind', { type: 'application/octet-stream' }));
+          formData.append('targetImageFile', targetImageFile);
         } catch (err) { console.warn('トラッキングデータの生成エラー', err); }
       }
+
       btn.textContent = '送信中...';
-      formData.append('originalFile', originalFile);
-      if (croppedBlob) formData.append('processedFile', new File([croppedBlob], `proc_${originalFile.name}`, { type: 'image/jpeg' }));
+      
+      const firstFile = selectedFiles[0];
+      formData.append('originalFile', firstFile);
+      if (croppedBlob) {
+        formData.append('processedFile', new File([croppedBlob], `proc_${firstFile.name}`, { type: 'image/jpeg' }));
+      }
+      
+      if (selectedFiles.length > 1 && displayOption === 'album') {
+        for (let i = 1; i < selectedFiles.length; i++) {
+          formData.append('albumFiles', selectedFiles[i]);
+        }
+      }
     }
 
     try {
       const res = await fetch('https://app.kototama-ar.com/api/embed-order', { method: 'POST', body: formData });
       const result = await res.json();
       if (result.success) {
-        // 💡 成功時にサンクスモーダルを表示
         thanksModal.style.display = 'flex';
       } else {
         alert('注文エラー: ' + (result.error || '不明なエラーが発生しました'));
