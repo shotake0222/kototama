@@ -4,16 +4,24 @@ import { createClient } from '@/utils/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
 import Script from 'next/script';
 
-// 💡 アニメーションの定義リスト
+// 💡 15種類のアニメーションタイプを網羅
 const ANIMATION_TYPES = [
   { key: 'none', label: 'なし' },
   { key: 'scroll', label: 'スクロール(下から上)' },
   { key: 'scroll-down', label: 'スクロール(上から下)' },
   { key: 'scroll-left', label: 'スクロール(右から左)' },
   { key: 'scroll-right', label: 'スクロール(左から右)' },
-  { key: 'pulse', label: 'ふわふわ' },
-  { key: 'spin', label: '回転' },
-  { key: 'bounce', label: 'バウンド' }
+  { key: 'pulse', label: 'ふわふわ(ゆっくり拡大縮小)' },
+  { key: 'heartbeat', label: '鼓動(ドクンドクン)' },
+  { key: 'float', label: '浮遊(ゆっくり上下)' },
+  { key: 'bounce', label: 'バウンド(跳ねる)' },
+  { key: 'swing', label: 'スイング(左右に揺れる)' },
+  { key: 'shake', label: 'シェイク(ぶるぶる)' },
+  { key: 'spin', label: 'スピン(レコード回転)' },
+  { key: 'flip-y', label: 'フリップ(横回転)' },
+  { key: 'flip-x', label: 'フリップ(縦回転)' },
+  { key: 'zoom-in', label: 'ズームイン(奥から手前)' },
+  { key: 'fade', label: '点滅(フェードイン/アウト)' }
 ];
 
 export default function Dashboard() {
@@ -117,7 +125,6 @@ export default function Dashboard() {
     }
   };
 
-  // 💡 アニメーションの更新機能
   const handleUpdateAnimation = async (orderId: string, currentType: string) => {
     const currentLabel = ANIMATION_TYPES.find(t => t.key === (currentType || 'none'))?.label;
     const menu = ANIMATION_TYPES.map((t, idx) => `${idx + 1}: ${t.label}`).join('\n');
@@ -235,7 +242,7 @@ export default function Dashboard() {
     const csvContent = "氏名,メールアドレス,クライアントID,NFC_UID,種類,テンプレートID,画像ファイル名,アニメーション,性別,年齢,郵便番号,住所,備考\n" +
                        "テスト 太郎,test@example.com,bulk_001,NFC-001,キーホルダー,,test_image1.jpg,none,男性,30,1000001,東京都千代田区,1枚アップロード\n" +
                        "テスト 花子,test2@example.com,bulk_001,NFC-002,キーホルダー,T-01,,,女性,25,1000001,東京都千代田区,テンプレート使用\n" +
-                       "テスト 次郎,test3@example.com,bulk_001,NFC-003,リボンチャーム,,test_image2.jpg|test_image3.jpg,scroll,男性,40,1000001,東京都千代田区,アルバム＋スクロール";
+                       "テスト 次郎,test3@example.com,bulk_001,NFC-003,リボンチャーム,,test_image2.jpg|test_image3.jpg,pulse,男性,40,1000001,東京都千代田区,アルバム＋ふわふわ";
     
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -401,7 +408,6 @@ export default function Dashboard() {
       <Script src="https://cdn.tailwindcss.com" strategy="beforeInteractive" />
       <Script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image.prod.js" strategy="lazyOnload" />
 
-      {/* 埋め込みサンプル用モーダル */}
       {showEmbedModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 animate-fade-in">
@@ -463,7 +469,6 @@ export default function Dashboard() {
             <button onClick={() => setActiveTab('emails')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'emails' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📧 メール配信</button>
           </div>
 
-          {/* 注文管理 */}
           {activeTab === 'orders' && (
             <div className="space-y-8 animate-fade-in">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -488,7 +493,6 @@ export default function Dashboard() {
                         <th className="p-4 font-bold text-gray-600">顧客名 / メール</th>
                         <th className="p-4 font-bold text-gray-600 text-center">表示オブジェクト</th>
                         <th className="p-4 font-bold text-gray-600">オプション詳細</th>
-                        {/* 💡 ヘッダーを変更 */}
                         <th className="p-4 font-bold text-gray-600">NFC / AR設定</th>
                         <th className="p-4 font-bold text-gray-600">操作</th>
                       </tr>
@@ -522,14 +526,13 @@ export default function Dashboard() {
                           
                           <td className="p-4"><div className="text-gray-600 text-xs whitespace-pre-wrap bg-gray-50 p-2 rounded border max-w-xs overflow-auto max-h-24">{order.option_details || 'なし'}</div><div className="font-bold text-red-600 mt-2">合計: ¥{order.total_price?.toLocaleString() || 0}</div></td>
                           
-                          {/* 💡 AR設定とアニメーション設定の表示 */}
                           <td className="p-4">
                             <div className="flex flex-col gap-2 items-start">
                               <div className="flex items-center gap-2">
                                 {order.nfc_uid ? <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-mono font-bold border border-green-200">{order.nfc_uid}</span> : <span className="text-gray-400 text-xs">未登録</span>}
                                 <button onClick={() => handleUpdateNfcUid(order.id, order.nfc_uid)} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded transition">更新</button>
                               </div>
-                              <div className="flex gap-1 mt-1">
+                              <div className="flex gap-1 mt-1 flex-wrap">
                                 {order.ar_mode === 'mindar' ? <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded font-bold text-xs inline-block">MindAR</span> : <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold text-xs inline-block">Hiroマーカー</span>}
                                 <span className={`px-2 py-1 rounded font-bold text-xs inline-block ${order.animation_type && order.animation_type !== 'none' ? 'bg-pink-100 text-pink-800' : 'bg-gray-100 text-gray-500'}`}>
                                   {currentAnimLabel}
@@ -538,7 +541,6 @@ export default function Dashboard() {
                             </div>
                           </td>
                           
-                          {/* 💡 操作欄に「アニメ変更」を追加 */}
                           <td className="p-4 whitespace-nowrap">
                             <div className="flex flex-col gap-2">
                               <div className="flex gap-2">
@@ -561,7 +563,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 画像・マーカー管理 */}
           {activeTab === 'images' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
               <div className="flex bg-gray-50 border-b overflow-x-auto">
@@ -634,7 +635,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* システム設定 */}
           {activeTab === 'settings' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
               <div className="p-6 bg-rose-50 border-b flex items-center justify-between flex-wrap gap-4">
@@ -671,7 +671,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* 一括発注処理 */}
           {activeTab === 'bulk' && (
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
@@ -757,7 +756,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* メール配信・テンプレート管理 */}
           {activeTab === 'emails' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
               <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-gray-100">

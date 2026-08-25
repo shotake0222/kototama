@@ -84,30 +84,39 @@ function ARViewer() {
   const BASE_SIZE = 4.0;
   const finalScale = scale * BASE_SIZE;
 
-  // 💡 多彩なアニメーションパターンの設定
+  // 💡 考えられる全てのアニメーション（14種類）を実装
   let animationAttribute = '';
   switch (animationType) {
     case 'scroll': // 下から上
-      animationAttribute = 'animation="property: position; from: 0 0 1.5; to: 0 0 -1.5; dur: 15000; loop: true; easing: linear;"';
-      break;
+      animationAttribute = 'animation="property: position; from: 0 0 1.5; to: 0 0 -1.5; dur: 15000; loop: true; easing: linear;"'; break;
     case 'scroll-down': // 上から下
-      animationAttribute = 'animation="property: position; from: 0 0 -1.5; to: 0 0 1.5; dur: 15000; loop: true; easing: linear;"';
-      break;
+      animationAttribute = 'animation="property: position; from: 0 0 -1.5; to: 0 0 1.5; dur: 15000; loop: true; easing: linear;"'; break;
     case 'scroll-left': // 右から左
-      animationAttribute = 'animation="property: position; from: 1.5 0 0; to: -1.5 0 0; dur: 15000; loop: true; easing: linear;"';
-      break;
+      animationAttribute = 'animation="property: position; from: 1.5 0 0; to: -1.5 0 0; dur: 15000; loop: true; easing: linear;"'; break;
     case 'scroll-right': // 左から右
-      animationAttribute = 'animation="property: position; from: -1.5 0 0; to: 1.5 0 0; dur: 15000; loop: true; easing: linear;"';
-      break;
-    case 'pulse': // ふわふわ・鼓動（スケールが大きくなったり小さくなったりする）
-      animationAttribute = `animation="property: scale; from: ${finalScale} ${finalScale} ${finalScale}; to: ${finalScale * 1.15} ${finalScale * 1.15} ${finalScale * 1.15}; dur: 1200; dir: alternate; loop: true; easing: easeInOutSine;"`;
-      break;
-    case 'spin': // 回転（レコードのようにクルクル回る）
-      animationAttribute = 'animation="property: rotation; from: -90 0 0; to: -90 0 360; dur: 8000; loop: true; easing: linear;"';
-      break;
-    case 'bounce': // バウンド（マーカーから少し浮き上がって弾む）
-      animationAttribute = 'animation="property: position; from: 0 0 0; to: 0 0.5 0; dur: 800; dir: alternate; loop: true; easing: easeOutQuad;"';
-      break;
+      animationAttribute = 'animation="property: position; from: -1.5 0 0; to: 1.5 0 0; dur: 15000; loop: true; easing: linear;"'; break;
+    case 'pulse': // ふわふわ（ゆっくり拡大縮小）
+      animationAttribute = `animation="property: scale; from: ${finalScale} ${finalScale} ${finalScale}; to: ${finalScale * 1.15} ${finalScale * 1.15} ${finalScale * 1.15}; dur: 2000; dir: alternate; loop: true; easing: easeInOutSine;"`; break;
+    case 'heartbeat': // 鼓動（ドクンドクン）
+      animationAttribute = `animation="property: scale; from: ${finalScale} ${finalScale} ${finalScale}; to: ${finalScale * 1.25} ${finalScale * 1.25} ${finalScale * 1.25}; dur: 400; dir: alternate; loop: true; easing: easeInOutBack;"`; break;
+    case 'float': // 浮遊（ゆっくり上下）
+      animationAttribute = 'animation="property: position; from: 0 0 0; to: 0 0.5 0; dur: 2500; dir: alternate; loop: true; easing: easeInOutSine;"'; break;
+    case 'bounce': // バウンド（跳ねる）
+      animationAttribute = 'animation="property: position; from: 0 0 0; to: 0 1.0 0; dur: 600; dir: alternate; loop: true; easing: easeOutQuad;"'; break;
+    case 'swing': // スイング（振り子のように揺れる）
+      animationAttribute = 'animation="property: rotation; from: -90 -15 0; to: -90 15 0; dur: 1500; dir: alternate; loop: true; easing: easeInOutSine;"'; break;
+    case 'shake': // シェイク（ぶるぶる）
+      animationAttribute = 'animation="property: position; from: -0.05 0 0; to: 0.05 0 0; dur: 80; dir: alternate; loop: true; easing: linear;"'; break;
+    case 'spin': // スピン（レコード回転）
+      animationAttribute = 'animation="property: rotation; from: -90 0 0; to: -90 0 360; dur: 8000; loop: true; easing: linear;"'; break;
+    case 'flip-y': // フリップ（横回転）
+      animationAttribute = 'animation="property: rotation; from: -90 0 0; to: -90 360 0; dur: 3000; loop: true; easing: linear;"'; break;
+    case 'flip-x': // フリップ（縦回転）
+      animationAttribute = 'animation="property: rotation; from: -90 0 0; to: 270 0 0; dur: 3000; loop: true; easing: linear;"'; break;
+    case 'zoom-in': // ズームイン（奥から手前）
+      animationAttribute = 'animation="property: position; from: 0 0 -2.0; to: 0 0 0; dur: 2000; dir: alternate; loop: true; easing: easeInOutSine;"'; break;
+    case 'fade': // 点滅・フェード
+      animationAttribute = 'animation="property: material.opacity; from: 1.0; to: 0.2; dur: 1500; dir: alternate; loop: true; easing: easeInOutSine;" transparent="true"'; break;
     default:
       animationAttribute = '';
   }

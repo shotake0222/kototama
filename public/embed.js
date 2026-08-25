@@ -188,7 +188,6 @@
               </div>
             </div>
 
-            <!-- 💡 新しくなったアニメーション選択エリア -->
             <div class="kt-form-group">
               <label class="kt-label">アニメーション（動き） <span class="kt-opt">任意</span></label>
               <div class="kt-radio-group">
@@ -201,6 +200,7 @@
                 </label>
               </div>
               
+              <!-- 💡 増やしたアニメーションをすべて選択可能に -->
               <div id="kt-animation-details" style="display: none; margin-top: 12px; padding: 16px; background: #fff; border-radius: 8px; border: 1px solid #e5e7eb;">
                 <label class="kt-label" style="font-size:0.85rem;">動きのパターンを選択 <span class="kt-req" style="background:#10b981;">必須</span></label>
                 <select id="kt-animation-pattern" class="kt-select">
@@ -208,9 +208,17 @@
                   <option value="scroll-down">スクロール (上から下へ流れる)</option>
                   <option value="scroll-left">スクロール (右から左へ流れる)</option>
                   <option value="scroll-right">スクロール (左から右へ流れる)</option>
-                  <option value="pulse">ふわふわ (鼓動のように拡大縮小)</option>
-                  <option value="spin">回転 (レコードのように回る)</option>
-                  <option value="bounce">バウンド (上に弾む)</option>
+                  <option value="pulse">ふわふわ (ゆっくり拡大縮小)</option>
+                  <option value="heartbeat">鼓動 (ドクンドクンと脈打つ)</option>
+                  <option value="float">浮遊 (ゆっくり上下に漂う)</option>
+                  <option value="bounce">バウンド (元気に跳ねる)</option>
+                  <option value="swing">スイング (振り子のように揺れる)</option>
+                  <option value="shake">シェイク (小刻みに震える)</option>
+                  <option value="spin">スピン (レコードのように回る)</option>
+                  <option value="flip-y">フリップ (くるりと横回転する)</option>
+                  <option value="flip-x">フリップ (くるりと縦回転する)</option>
+                  <option value="zoom-in">ズームイン (奥から手前に迫る)</option>
+                  <option value="fade">点滅 (ゆっくりフェードイン・アウト)</option>
                 </select>
               </div>
             </div>
@@ -310,14 +318,11 @@
     document.getElementById('kt-file-status').textContent = statusText;
   });
 
-  // 💡 フォームの表示切替と金額計算
   const updateFormState = () => {
     const selectedItem = document.querySelector('input[name="itemType"]:checked');
     const arMode = document.querySelector('input[name="arMode"]:checked').value;
     const imageType = document.querySelector('input[name="imageType"]:checked').value;
     const displayOption = document.querySelector('input[name="displayOption"]:checked').value;
-    
-    // アニメーションのトグル判定
     const isAnimated = document.querySelector('input[name="animationToggle"]:checked').value === 'add';
     
     if (arMode === 'mindar') {
@@ -348,7 +353,6 @@
       fileInput.removeAttribute('multiple');
     }
 
-    // 💡 アニメーション詳細のプルダウン表示切替
     if (isAnimated) {
       document.getElementById('kt-animation-details').style.display = 'block';
     } else {
@@ -359,8 +363,6 @@
     const optMindArPrice = arMode === 'mindar' ? s.PRICE_MIND_AR : 0;
     const optTemplatePrice = imageType === 'テンプレート' ? s.PRICE_TEMPLATE : 0;
     const optAlbumPrice = (imageType === 'アップロード' && displayOption === 'album') ? s.PRICE_ALBUM : 0;
-    
-    // 💡 アニメーションが「追加」になっている場合のみ課金
     const optAnimationPrice = (imageType === 'アップロード' && isAnimated) ? s.PRICE_ANIMATION : 0;
     
     const totalOptionPrice = optMindArPrice + optTemplatePrice + optAlbumPrice + optAnimationPrice;
@@ -377,10 +379,7 @@
   };
   
   document.querySelectorAll('input[type="radio"]').forEach(r => r.addEventListener('change', updateFormState));
-  
-  // セレクトボックス変更時も発火させる（必須ではないですが念のため）
   document.getElementById('kt-animation-pattern')?.addEventListener('change', updateFormState);
-  
   updateFormState();
 
   document.getElementById('kt-zip-btn').addEventListener('click', async () => {
@@ -433,14 +432,13 @@
     const imageType = document.querySelector('input[name="imageType"]:checked').value;
     const displayOption = document.querySelector('input[name="displayOption"]')?.checked ? document.querySelector('input[name="displayOption"]:checked').value : 'single';
     
-    // 💡 アニメーションパターンの取得
     const isAnimated = document.querySelector('input[name="animationToggle"]')?.checked ? document.querySelector('input[name="animationToggle"]:checked').value === 'add' : false;
     const finalAnimType = isAnimated ? document.getElementById('kt-animation-pattern').value : 'none';
 
-    // 💡 管理画面でわかりやすいように日本語名に変換
     const animNames = {
       'scroll': 'スクロール(下から上)', 'scroll-down': 'スクロール(上から下)', 'scroll-left': 'スクロール(右から左)', 'scroll-right': 'スクロール(左から右)',
-      'pulse': 'ふわふわ', 'spin': '回転', 'bounce': 'バウンド', 'none': 'なし'
+      'pulse': 'ふわふわ', 'heartbeat': '鼓動', 'float': '浮遊', 'bounce': 'バウンド', 'swing': 'スイング', 'shake': 'シェイク',
+      'spin': '回転', 'flip-y': 'フリップ(横)', 'flip-x': 'フリップ(縦)', 'zoom-in': 'ズームイン', 'fade': '点滅', 'none': 'なし'
     };
     
     let optionsText = `【種類】${itemType}\n【AR再生】${arMode === 'mindar' ? 'イメージトラッキング (+3000円)' : '通常マーカー読込'}\n【画像】${imageType}`;
@@ -456,7 +454,7 @@
     formData.append('clientId', clientId);
     formData.append('optionDetails', optionsText);
     formData.append('totalPrice', window.currentTotalPrice);
-    formData.append('animationType', finalAnimType); // 💡 バックエンドへ詳細パターンを送信
+    formData.append('animationType', finalAnimType);
     
     if (imageType === 'テンプレート') {
       formData.append('templateId', document.getElementById('kt-template-id').value);
