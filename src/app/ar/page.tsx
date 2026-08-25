@@ -131,36 +131,33 @@ function ARViewer() {
   `;
 
   if (arMode === 'hiro') {
+    // 💡 TypeScriptエラーを回避するため、再度文字列（HTML）として定義します
+    const arHtml = `
+      <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; patternRatio: 0.9;" renderer="logarithmicDepthBuffer: true;">
+        <a-marker type="pattern" url="/markers/pattern-kototama.patt">
+          <!-- 認識確認用の赤い箱 -->
+          <a-box position="0 0 0" scale="1 1 1" color="red" opacity="0.5"></a-box>
+          <!-- 実際の画像 -->
+          <a-image 
+            src="${images[0]}" 
+            crossorigin="anonymous"
+            position="0 0.5 0" 
+            rotation="-90 0 0" 
+            scale="${scale * 2} ${scale * 2} ${scale * 2}"
+          ></a-image>
+        </a-marker>
+        <a-entity camera></a-entity>
+      </a-scene>
+    `;
+
     return (
       <>
         <style dangerouslySetInnerHTML={{ __html: globalCss }} />
         <Script src="https://aframe.io/releases/1.2.0/aframe.min.js" strategy="afterInteractive" onLoad={() => setAframeLoaded(true)} />
         {aframeLoaded && <Script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js" strategy="afterInteractive" onLoad={() => setArjsLoaded(true)} />}
         
-        {/* 💡 ReactのDOMが確定し、ライブラリがロードされてから <a-scene> を描画する */}
         {isArReady ? (
-          <div style={{ width: '100%', height: '100%', background: 'transparent' }}>
-            <a-scene 
-              embedded 
-              // 💡 実績のある patternRatio: 0.9 を設定
-              arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; patternRatio: 0.9;" 
-              renderer="logarithmicDepthBuffer: true;"
-            >
-              <a-marker type="pattern" url="/markers/pattern-kototama.patt">
-                {/* 認識確認用の赤い箱 */}
-                <a-box position="0 0 0" scale="1 1 1" color="red" opacity="0.5"></a-box>
-                {/* 実際の画像 */}
-                <a-image 
-                  src={images[0]} 
-                  crossOrigin="anonymous"
-                  position="0 0.5 0" 
-                  rotation="-90 0 0" 
-                  scale={`${scale * 2} ${scale * 2} ${scale * 2}`}
-                ></a-image>
-              </a-marker>
-              <a-entity camera></a-entity>
-            </a-scene>
-          </div>
+          <div style={{ width: '100%', height: '100%', background: 'transparent' }} dangerouslySetInnerHTML={{ __html: arHtml }} />
         ) : (
           <div className="fixed inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
@@ -172,8 +169,23 @@ function ARViewer() {
   }
 
   if (arMode === 'mindar') {
-    // MindAR側のコードは省略せずそのまま維持
     const targetSrc = mindFileUrl || ''; 
+    const mindArHtml = `
+      <a-scene mindar-image="imageTargetSrc: ${targetSrc};" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-entity mindar-image-target="targetIndex: 0">
+          <a-image 
+            src="${images[0]}" 
+            crossorigin="anonymous"
+            position="0 0 0" 
+            height="1" 
+            width="1"
+            scale="${scale} ${scale} ${scale}"
+          ></a-image>
+        </a-entity>
+      </a-scene>
+    `;
+
     return (
       <>
         <style dangerouslySetInnerHTML={{ __html: globalCss }} />
@@ -181,21 +193,7 @@ function ARViewer() {
         {aframeLoaded && <Script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js" strategy="afterInteractive" onLoad={() => setArjsLoaded(true)} />}
         
         {isArReady ? (
-          <div style={{ width: '100%', height: '100%', background: 'transparent' }}>
-            <a-scene mindar-image={`imageTargetSrc: ${targetSrc};`} color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-              <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-              <a-entity mindar-image-target="targetIndex: 0">
-                <a-image 
-                  src={images[0]} 
-                  crossOrigin="anonymous"
-                  position="0 0 0" 
-                  height="1" 
-                  width="1"
-                  scale={`${scale} ${scale} ${scale}`}
-                ></a-image>
-              </a-entity>
-            </a-scene>
-          </div>
+          <div style={{ width: '100%', height: '100%', background: 'transparent' }} dangerouslySetInnerHTML={{ __html: mindArHtml }} />
         ) : (
           <div className="fixed inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
