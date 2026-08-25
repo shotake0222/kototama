@@ -12,7 +12,10 @@ function ARViewer() {
   const [error, setError] = useState<string | null>(null);
   
   const [images, setImages] = useState<string[]>([]);
-  const [scale, setScale] = useState(1.0);
+  
+  // 💡 画像が小さいため、デフォルトの表示スケールを 1.0 から 2.0（2倍）に変更しました！
+  const [scale, setScale] = useState(2.0); 
+  
   const [origin, setOrigin] = useState('');
   
   const supabase = createClient();
@@ -79,7 +82,6 @@ function ARViewer() {
 
   const pattUrl = `${origin}/markers/pattern-kototama.patt`;
 
-  // 💡 テスト用の赤い箱やデバッグパネルを削除し、本番用の画像のみを表示
   const arHtml = `
 <!DOCTYPE html>
 <html lang="ja">
@@ -111,7 +113,6 @@ function ARViewer() {
     </a-assets>
     
     <a-marker id="kototama-marker" preset="custom" type="pattern" url="${pattUrl}">
-      <!-- 💡 本命の画像のみを表示。Django版と同じく position="0 0 0", rotation="-90 0 0" に設定 -->
       <a-image src="#ar-image" position="0 0 0" scale="${scale} ${scale} ${scale}" rotation="-90 0 0"></a-image>
     </a-marker>
 
