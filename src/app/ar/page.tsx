@@ -86,7 +86,7 @@ function ARViewer() {
 
   // 💡 全体の基本となる大きさをここで設定します（例: 4.0 なら従来の4倍）
   // 管理画面で 1.5倍 に設定した場合は、 4.0 × 1.5 = 6.0倍 で表示されます。
-  const BASE_SIZE = 4.0;
+  const BASE_SIZE = 2.0;
   const finalScale = scale * BASE_SIZE;
 
   const arHtml = `
