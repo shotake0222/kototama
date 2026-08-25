@@ -164,7 +164,7 @@ export default function Dashboard() {
     } catch (err) { alert('削除に失敗しました。'); }
   };
 
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => { /* (省略せず前回のものを保持) */
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -192,7 +192,7 @@ export default function Dashboard() {
 
   const handleBulkImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) setBulkImages(Array.from(e.target.files)); };
 
-  const executeBulkUpload = async () => { /* (省略せず前回のものを保持) */
+  const executeBulkUpload = async () => {
     if (!confirm(`合計 ${csvData.length} 件のデータを作成します。よろしいですか？`)) return;
     setIsUploadingBulk(true); setBulkProgress({ current: 0, total: csvData.length });
     const getSettingNum = (key: string, def: number) => { const found = settings.find(s => s.key === key); return found && !isNaN(Number(found.value)) ? Number(found.value) : def; };
@@ -209,7 +209,6 @@ export default function Dashboard() {
       let uploadFile = null;
       if (targetFileName) uploadFile = bulkImages.find(f => f.name === targetFileName);
 
-      // (※バルク側の金額計算は簡易化されているため、必要に応じて設定から動的に取る処理を拡張できます)
       const subTotal = 1500 + PRICE_POSTAGE; 
       const total = subTotal + Math.floor(subTotal * PRICE_TAX);
       const optionDetails = `【種類】${itemType}\n【画像】${templateId ? 'テンプレート' : 'アップロード'}\n【性別】${row['性別'] || ''}\n【年齢】${row['年齢'] || ''}\n【住所】〒${row['郵便番号'] || ''} ${row['住所'] || ''}\n【備考】${row['備考'] || ''}`;
@@ -241,8 +240,9 @@ export default function Dashboard() {
     setIsUploadingBulk(false); alert('一括処理が完了しました！'); setCsvData([]); setBulkImages([]); fetchData();
   };
 
+  // 💡 修正: 正しいサブドメイン app.kototama-ar.com に書き換え
   const generatedTag = clientId 
-    ? `<div id="ar-order-form-container"></div>\n<script src="https://kototama.vercel.app/embed.js" id="ar-embed-script" data-client-id="${clientId}"></script>`
+    ? `<div id="ar-order-form-container"></div>\n<script src="https://app.kototama-ar.com/embed.js" id="ar-embed-script" data-client-id="${clientId}"></script>`
     : '※クライアントIDを入力すると、ここにタグが表示されます。';
 
   return (

@@ -9,7 +9,8 @@
   let customProducts = [];
   
   try {
-    const res = await fetch('https://kototama.vercel.app/api/settings');
+    // 💡 修正: 正しいサブドメインに書き換え
+    const res = await fetch('https://app.kototama-ar.com/api/settings');
     if (res.ok) {
       const dbSettings = await res.json();
       for (const key in dbSettings) {
@@ -315,7 +316,8 @@
     }
 
     try {
-      const res = await fetch('https://kototama.vercel.app/api/embed-order', { method: 'POST', body: formData });
+      // 💡 修正: 正しいサブドメインに書き換え
+      const res = await fetch('https://app.kototama-ar.com/api/embed-order', { method: 'POST', body: formData });
       if ((await res.json()).success) {
         document.getElementById('ar-embed-form').style.display = 'none';
         document.getElementById('kt-result-message').style.display = 'block';
