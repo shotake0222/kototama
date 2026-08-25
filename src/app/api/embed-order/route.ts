@@ -117,8 +117,8 @@ export async function POST(request: Request) {
         },
       });
 
-      // 💡 ① お客様向けメールのテンプレート
-      const customerMailText = `
+      // 💡 送信するメール本文の定義（ここで 'mailText' を定義しています）
+      const mailText = `
 ${customerName} 様
 
 この度は「ことたま」をご注文いただき、誠にありがとうございます。
@@ -147,35 +147,7 @@ https://kototama-ar.com/
 ==================================================
       `.trim();
 
-      // 💡 ② 運営・管理者向けメールのテンプレート（admin_mail.txt 相当）
-      const adminMailText = `
-※このメールはシステムからの自動送信です。
-
-LPより「ことたま」の新規注文が入りました。
-管理ダッシュボードより内容をご確認ください。
-
-【注文日時】
-${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
-
-【お客様情報】
-氏名: ${customerName}
-メール: ${email}
-経路: ${clientId}
-
-【オプション・配送先詳細】
-${optionDetails}
-
-【決済情報】
-合計金額: ¥${totalPrice.toLocaleString()}
-ステータス: pending（未入金）
-
-【AR・画像情報】
-モード: ${arMode === 'mindar' ? 'イメージトラッキング(MindAR)' : '通常マーカー(Hiro)'}
-テンプレート指定: ${templateId || 'なし（画像アップロード）'}
-AR用URL: https://app.kototama-ar.com/ar?uid=${hashId}
-      `.trim();
-
-// お客様への送信（同時に運営側の複数アドレスへBCCで送信）
+      // お客様への送信（同時に運営側の複数アドレスへBCCで送信）
       await transporter.sendMail({
         from: `"ことたま" <${process.env.SMTP_USER}>`,
         to: email,
@@ -183,27 +155,13 @@ AR用URL: https://app.kototama-ar.com/ar?uid=${hashId}
         bcc: [
           process.env.SMTP_USER,             // 元々のinfoアドレス
           'shotaro6022@gmail.com',           // 追加したいアドレス1
-          'shotake0222@gmail.com'          // 追加したいアドレス2（何個でも増やせます）
+          'shotake0222@gmail.com'            // 追加したいアドレス2（何個でも増やせます）
         ],
         subject: '【ことたま】ご注文を承りました',
         text: mailText,
       });
-
-      // ✉️ 運営側へ別途送信
-      // 💡 配列になっているため、複数のアドレスを設定可能です
-      const adminEmails = [
-        process.env.SMTP_USER,         // メインのinfoアドレス
-        // 'admin2@example.com',       // 追加したい場合はここに書く
-      ];
-
-      await transporter.sendMail({
-        from: `"ことたまシステム" <${process.env.SMTP_USER}>`,
-        to: adminEmails,
-        subject: `【新規注文】${customerName} 様よりご注文が入りました`,
-        text: adminMailText,
-      });
       
-      console.log('✅ Emails sent successfully to customer and admins.');
+      console.log('✅ Emails sent successfully.');
 
     } catch (mailError: any) {
       console.error('❌ Mail sending failed:', mailError);
