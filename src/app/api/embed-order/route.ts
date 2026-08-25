@@ -117,8 +117,8 @@ export async function POST(request: Request) {
         },
       });
 
-      // 💡 送信するメール本文の定義（ここで 'mailText' を定義しています）
-      const mailText = `
+      // 💡 ① お客様向けメールの本文（ARのURLなどは載せない）
+      const customerMailText = `
 ${customerName} 様
 
 この度は「ことたま」をご注文いただき、誠にありがとうございます。
@@ -147,21 +147,57 @@ https://kototama-ar.com/
 ==================================================
       `.trim();
 
-      // お客様への送信（同時に運営側の複数アドレスへBCCで送信）
+      // 💡 ② 運営側向けメールの本文（ARのURLなど管理用データを載せる）
+      const adminMailText = `
+※このメールはシステムからの自動送信です。
+
+LPより「ことたま」の新規注文が入りました。
+管理ダッシュボードより内容をご確認ください。
+
+【注文日時】
+${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
+
+【お客様情報】
+氏名: ${customerName}
+メール: ${email}
+経路: ${clientId}
+
+【オプション・配送先詳細】
+${optionDetails}
+
+【決済情報】
+合計金額: ¥${totalPrice.toLocaleString()}
+ステータス: pending（未入金）
+
+【AR・画像情報】
+モード: ${arMode === 'mindar' ? 'イメージトラッキング(MindAR)' : '通常マーカー(Hiro)'}
+テンプレート指定: ${templateId || 'なし（画像アップロード）'}
+AR用URL: https://app.kototama-ar.com/ar?uid=${hashId}
+      `.trim();
+
+      // ✉️ 1. お客様への送信（お客様のアドレスのみ）
       await transporter.sendMail({
         from: `"ことたま" <${process.env.SMTP_USER}>`,
         to: email,
-        // 💡 ここを配列 [ ] にして、カンマ区切りで増やしたいアドレスをクォーテーション('')で囲んで追加します
-        bcc: [
-          process.env.SMTP_USER,             // 元々のinfoアドレス
-          'shotaro6022@gmail.com',           // 追加したいアドレス1
-          'shotake0222@gmail.com'            // 追加したいアドレス2（何個でも増やせます）
-        ],
         subject: '【ことたま】ご注文を承りました',
-        text: mailText,
+        text: customerMailText,
       });
       
-      console.log('✅ Emails sent successfully.');
+      // ✉️ 2. 運営側（複数人）への送信
+      const adminEmails = [
+        process.env.SMTP_USER,             // 元々のinfoアドレス
+        'shotaro6022@gmail.com',           // 追加アドレス1
+        'shotake0222@gmail.com'            // 追加アドレス2
+      ];
+
+      await transporter.sendMail({
+        from: `"ことたまシステム" <${process.env.SMTP_USER}>`,
+        to: adminEmails, // 運営側はBCCではなくTOで一斉送信
+        subject: `【新規注文】${customerName} 様よりご注文が入りました`,
+        text: adminMailText,
+      });
+
+      console.log('✅ Emails sent successfully to customer and admins.');
 
     } catch (mailError: any) {
       console.error('❌ Mail sending failed:', mailError);
