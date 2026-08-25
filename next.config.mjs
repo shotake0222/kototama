@@ -16,4 +16,4 @@ const nextConfig = {
   }
 };
 
-module.exports = nextConfig; // (.mjsの場合は export default nextConfig; )
+export default nextConfig;
