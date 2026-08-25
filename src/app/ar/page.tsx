@@ -12,12 +12,15 @@ function ARViewer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // AR描画に必要なデータ群
-  const [arMode, setArMode] = useState<'hiro' | 'mindar'>('hiro'); // 💡将来の分岐用
+  const [arMode, setArMode] = useState<'hiro' | 'mindar'>('hiro');
   const [animationType, setAnimationType] = useState('none');
   const [mindFileUrl, setMindFileUrl] = useState<string | null>(null);
-  const [images, setImages] = useState<string[]>([]); // 💡アルバム用に複数枚受け取れるよう配列化
+  const [images, setImages] = useState<string[]>([]);
   const [scale, setScale] = useState(1.0);
+  
+  // 💡 スクリプトの確実なロード順序を管理するためのステート
+  const [aframeLoaded, setAframeLoaded] = useState(false);
+  const [arjsLoaded, setArjsLoaded] = useState(false);
   
   const supabase = createClient();
 
@@ -42,14 +45,12 @@ function ARViewer() {
           return;
         }
 
-        // 💡 将来の拡張データの取得（デフォルト値も設定）
         setArMode(data.ar_mode === 'mindar' ? 'mindar' : 'hiro');
         setAnimationType(data.animation_type || 'none');
         
         const storageBase = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/ar_images/`;
         if (data.mind_file_url) setMindFileUrl(storageBase + data.mind_file_url);
 
-        // 💡 アルバム機能を見据えて、登録されている画像をすべて配列に格納
         const imageUrls = data.order_images
           .map((img: any) => img.processed_image_url || img.original_image_url)
           .filter(Boolean)
@@ -86,14 +87,16 @@ function ARViewer() {
     );
   }
 
+  // 両方のスクリプトが読み込まれたか判定
+  const isArReady = aframeLoaded && arjsLoaded;
+
   // ====================================================
   // 💡 【モード1】従来のAR.js（hiroマーカー）モード
   // ====================================================
   if (arMode === 'hiro') {
     const arHtml = `
-      <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
+      <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;" renderer="logarithmicDepthBuffer: true;">
         <a-marker preset="hiro">
-          <!-- TODO: アルバムアニメーション実装時はここに複数タグやA-Frameアニメーションを記述 -->
           <a-image 
             src="${images[0]}" 
             position="0 0.5 0" 
@@ -107,9 +110,32 @@ function ARViewer() {
 
     return (
       <>
-        <Script src="https://aframe.io/releases/1.2.0/aframe.min.js" strategy="beforeInteractive" />
-        <Script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js" strategy="beforeInteractive" />
-        <div style={{ margin: 0, overflow: 'hidden', width: '100vw', height: '100vh', backgroundColor: '#000' }} dangerouslySetInnerHTML={{ __html: arHtml }} />
+        {/* A-Frame を先に読み込む */}
+        <Script 
+          src="https://aframe.io/releases/1.2.0/aframe.min.js" 
+          strategy="afterInteractive" 
+          onLoad={() => setAframeLoaded(true)} 
+        />
+        {/* A-Frame の読み込みが完了してから AR.js を読み込む */}
+        {aframeLoaded && (
+          <Script 
+            src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js" 
+            strategy="afterInteractive" 
+            onLoad={() => setArjsLoaded(true)} 
+          />
+        )}
+        
+        {/* 💡 背景をtransparent（透明）にし、z-indexで適切に配置 */}
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 10, overflow: 'hidden', backgroundColor: 'transparent' }}>
+          {isArReady ? (
+            <div dangerouslySetInnerHTML={{ __html: arHtml }} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500 mb-4"></div>
+              <p>カメラを起動中...</p>
+            </div>
+          )}
+        </div>
       </>
     );
   }
@@ -118,13 +144,11 @@ function ARViewer() {
   // 💡 【モード2】将来の MindAR（イメージトラッキング）モード
   // ====================================================
   if (arMode === 'mindar') {
-    // ※ mindFileUrl が必須になります（対象物の特徴点ファイル）
     const targetSrc = mindFileUrl || ''; 
     const mindArHtml = `
       <a-scene mindar-image="imageTargetSrc: ${targetSrc};" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         <a-entity mindar-image-target="targetIndex: 0">
-          <!-- TODO: アルバムアニメーション実装時はここに複数タグやA-Frameアニメーションを記述 -->
           <a-image 
             src="${images[0]}" 
             position="0 0 0" 
@@ -138,10 +162,32 @@ function ARViewer() {
 
     return (
       <>
-        {/* MindARはA-Frame v1.3.0以上が推奨です */}
-        <Script src="https://aframe.io/releases/1.3.0/aframe.min.js" strategy="beforeInteractive" />
-        <Script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js" strategy="beforeInteractive" />
-        <div style={{ margin: 0, overflow: 'hidden', width: '100vw', height: '100vh', backgroundColor: '#000' }} dangerouslySetInnerHTML={{ __html: mindArHtml }} />
+        {/* MindAR推奨の A-Frame v1.3.0 を読み込む */}
+        <Script 
+          src="https://aframe.io/releases/1.3.0/aframe.min.js" 
+          strategy="afterInteractive" 
+          onLoad={() => setAframeLoaded(true)} 
+        />
+        {/* A-Frame の読み込み完了後に MindAR を読み込む */}
+        {aframeLoaded && (
+          <Script 
+            src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js" 
+            strategy="afterInteractive" 
+            onLoad={() => setArjsLoaded(true)} 
+          />
+        )}
+        
+        {/* 💡 背景をtransparent（透明）にし、z-indexで適切に配置 */}
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 10, overflow: 'hidden', backgroundColor: 'transparent' }}>
+          {isArReady ? (
+            <div dangerouslySetInnerHTML={{ __html: mindArHtml }} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500 mb-4"></div>
+              <p>カメラを起動中...</p>
+            </div>
+          )}
+        </div>
       </>
     );
   }
