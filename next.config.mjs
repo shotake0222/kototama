@@ -1,13 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    // ESLintのエラーでビルドが止まるのを防ぐ
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // TypeScriptの型エラーでビルドが止まるのを防ぐ
-    ignoreBuildErrors: true,
-  },
+  async headers() {
+    return [
+      {
+        // apiディレクトリ以下のすべての通信を許可
+        source: "/api/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Credentials", value: "true" },
+          { key: "Access-Control-Allow-Origin", value: "*" }, // どのLPからでも埋め込み可能にする
+          { key: "Access-Control-Allow-Methods", value: "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
+          { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" },
+        ]
+      }
+    ]
+  }
 };
 
-export default nextConfig;
+module.exports = nextConfig; // (.mjsの場合は export default nextConfig; )
