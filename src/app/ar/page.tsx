@@ -23,9 +23,10 @@ function ARViewer() {
   
   const supabase = createClient();
 
+  // 1. データの取得
   useEffect(() => {
     if (!uid) {
-      setError('NFCタグの情報が読み取れません。もう一度タッチしてください。');
+      setError('NFCタグの情報が読み取れません。');
       setLoading(false);
       return;
     }
@@ -39,7 +40,7 @@ function ARViewer() {
           .single();
 
         if (error || !data) {
-          setError('データが見つかりません。未登録のタグか、表示期間が終了しています。');
+          setError('データが見つかりません。');
           setLoading(false);
           return;
         }
@@ -69,10 +70,22 @@ function ARViewer() {
     fetchOrder();
   }, [uid, supabase]);
 
+  const isArReady = aframeLoaded && arjsLoaded;
+
+  // 💡 2. 左に寄るバグを直すため、AR起動後に強制的に画面サイズを再計算させる
+  useEffect(() => {
+    if (isArReady) {
+      // 少し遅延させてからリサイズイベントを連発して、AR.jsに正しい画面サイズを認識させる
+      const timer1 = setTimeout(() => window.dispatchEvent(new Event('resize')), 500);
+      const timer2 = setTimeout(() => window.dispatchEvent(new Event('resize')), 1500);
+      return () => { clearTimeout(timer1); clearTimeout(timer2); };
+    }
+  }, [isArReady]);
+
   if (loading) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-900 text-white z-50 font-sans">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500 mb-4"></div>
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-900 text-white z-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
         <p>ARデータを読み込み中...</p>
       </div>
     );
@@ -80,41 +93,46 @@ function ARViewer() {
 
   if (error || images.length === 0) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gray-900 text-white p-8 text-center z-50 font-sans">
-        <div><div className="text-4xl mb-4">⚠️</div><p className="text-rose-400 font-bold leading-relaxed">{error || '画像データが見つかりません。'}</p></div>
+      <div className="fixed inset-0 flex items-center justify-center bg-gray-900 text-white p-8 text-center z-50">
+        <div><div className="text-4xl mb-4">⚠️</div><p className="text-rose-400 font-bold">{error || '画像がありません。'}</p></div>
       </div>
     );
   }
 
-  const isArReady = aframeLoaded && arjsLoaded;
-
-  // 💡 AR.js のカメラ映像(videoタグ)が画面外に飛ばないように強制するCSS
+  // 💡 3. 最強のCSS: Next.jsの干渉をすべて無視して動画とキャンバスを全画面固定にする
   const globalCss = `
-    body, html {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
+    body, html, #__next {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      overflow: hidden !important;
       background-color: transparent !important;
     }
-    #arjs-video {
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover !important;
+    /* ARライブラリが生成するカメラ映像を画面中央＆全画面に固定 */
+    video {
+      position: fixed !important;
+      top: 50% !important;
+      left: 50% !important;
+      min-width: 100vw !important;
+      min-height: 100vh !important;
+      width: auto !important;
+      height: auto !important;
+      transform: translate(-50%, -50%) !important;
       z-index: -2 !important;
+      object-fit: cover !important;
     }
+    /* ARオブジェクトを描画する透明なキャンバスを全画面に固定 */
     .a-canvas {
-      position: absolute !important;
+      position: fixed !important;
       top: 0 !important;
       left: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
+      width: 100vw !important;
+      height: 100vh !important;
       z-index: 10 !important;
     }
+    /* 不要なUIを隠す */
+    .mindar-ui-overlay { display: none !important; }
   `;
 
   if (arMode === 'hiro') {
@@ -135,30 +153,17 @@ function ARViewer() {
     return (
       <>
         <style dangerouslySetInnerHTML={{ __html: globalCss }} />
+        <Script src="https://aframe.io/releases/1.2.0/aframe.min.js" strategy="afterInteractive" onLoad={() => setAframeLoaded(true)} />
+        {aframeLoaded && <Script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js" strategy="afterInteractive" onLoad={() => setArjsLoaded(true)} />}
         
-        <Script 
-          src="https://aframe.io/releases/1.2.0/aframe.min.js" 
-          strategy="afterInteractive" 
-          onLoad={() => setAframeLoaded(true)} 
-        />
-        {aframeLoaded && (
-          <Script 
-            src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js" 
-            strategy="afterInteractive" 
-            onLoad={() => setArjsLoaded(true)} 
-          />
+        {isArReady ? (
+          <div dangerouslySetInnerHTML={{ __html: arHtml }} />
+        ) : (
+          <div className="fixed inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
+            <p>カメラを起動中...</p>
+          </div>
         )}
-        
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1, overflow: 'hidden' }}>
-          {isArReady ? (
-            <div dangerouslySetInnerHTML={{ __html: arHtml }} style={{ width: '100%', height: '100%' }} />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500 mb-4"></div>
-              <p>カメラを起動中...</p>
-            </div>
-          )}
-        </div>
       </>
     );
   }
@@ -183,30 +188,17 @@ function ARViewer() {
     return (
       <>
         <style dangerouslySetInnerHTML={{ __html: globalCss }} />
+        <Script src="https://aframe.io/releases/1.3.0/aframe.min.js" strategy="afterInteractive" onLoad={() => setAframeLoaded(true)} />
+        {aframeLoaded && <Script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js" strategy="afterInteractive" onLoad={() => setArjsLoaded(true)} />}
         
-        <Script 
-          src="https://aframe.io/releases/1.3.0/aframe.min.js" 
-          strategy="afterInteractive" 
-          onLoad={() => setAframeLoaded(true)} 
-        />
-        {aframeLoaded && (
-          <Script 
-            src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js" 
-            strategy="afterInteractive" 
-            onLoad={() => setArjsLoaded(true)} 
-          />
+        {isArReady ? (
+          <div dangerouslySetInnerHTML={{ __html: mindArHtml }} />
+        ) : (
+          <div className="fixed inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rose-500 mb-4"></div>
+            <p>カメラを起動中...</p>
+          </div>
         )}
-        
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1, overflow: 'hidden' }}>
-          {isArReady ? (
-            <div dangerouslySetInnerHTML={{ __html: mindArHtml }} style={{ width: '100%', height: '100%' }} />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gray-900 z-50">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500 mb-4"></div>
-              <p>カメラを起動中...</p>
-            </div>
-          )}
-        </div>
       </>
     );
   }
