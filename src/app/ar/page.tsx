@@ -13,8 +13,8 @@ function ARViewer() {
   
   const [images, setImages] = useState<string[]>([]);
   
-  // 💡 画像が小さいため、デフォルトの表示スケールを 1.0 から 2.0（2倍）に変更しました！
-  const [scale, setScale] = useState(4.0); 
+  // 💡 DBに保存されている個別の倍率（デフォルトは1.0）
+  const [scale, setScale] = useState(1.0); 
   
   const [origin, setOrigin] = useState('');
   
@@ -51,6 +51,8 @@ function ARViewer() {
           .map((path: string) => storageBase + path);
         
         setImages(imageUrls);
+        
+        // DBに個別の倍率設定があれば上書き（なければ1.0のまま）
         if (data.object_scale) setScale(data.object_scale);
         
       } catch (err) {
@@ -81,6 +83,11 @@ function ARViewer() {
   }
 
   const pattUrl = `${origin}/markers/pattern-kototama.patt`;
+
+  // 💡 全体の基本となる大きさをここで設定します（例: 4.0 なら従来の4倍）
+  // 管理画面で 1.5倍 に設定した場合は、 4.0 × 1.5 = 6.0倍 で表示されます。
+  const BASE_SIZE = 4.0;
+  const finalScale = scale * BASE_SIZE;
 
   const arHtml = `
 <!DOCTYPE html>
@@ -113,7 +120,8 @@ function ARViewer() {
     </a-assets>
     
     <a-marker id="kototama-marker" preset="custom" type="pattern" url="${pattUrl}">
-      <a-image src="#ar-image" position="0 0 0" scale="${scale} ${scale} ${scale}" rotation="-90 0 0"></a-image>
+      <!-- 💡 計算された最終的な大きさを scale に適用 -->
+      <a-image src="#ar-image" position="0 0 0" scale="${finalScale} ${finalScale} ${finalScale}" rotation="-90 0 0"></a-image>
     </a-marker>
 
     <a-entity camera></a-entity>
