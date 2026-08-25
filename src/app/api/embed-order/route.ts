@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
 
 // Supabaseクライアントの初期化（サーバーサイド用）
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -25,7 +23,7 @@ export async function POST(request: Request) {
     const templateId = formData.get('templateId') as string | null;
     const originalFile = formData.get('originalFile') as File | null;
     const processedFile = formData.get('processedFile') as File | null;
-    const mindFile = formData.get('mindFile') as File | null; // 💡 フロントから送られた .mind ファイル
+    const mindFile = formData.get('mindFile') as File | null;
 
     const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
 
@@ -33,19 +31,17 @@ export async function POST(request: Request) {
     let originalImageUrl = null;
     let mindFileUrl = null;
     let targetImageUrl = null;
-    let arMode = 'hiro'; // デフォルトはマーカー
+    let arMode = 'hiro'; 
 
     // ==========================================
     // 1. ファイルをSupabase Storageへアップロード
     // ==========================================
     if (templateId) {
-      // テンプレート指定の場合（パスの整形）
       let formattedId = templateId.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).toUpperCase().trim();
       formattedId = formattedId.replace(/ー|−|_/g, '-');
       if (!formattedId.includes('-')) formattedId = formattedId.replace('T', 'T-');
       processedImageUrl = `templates/${formattedId}.jpg`;
     } else {
-      // ユーザー画像アップロードの場合
       if (originalFile) {
         const ext = originalFile.name.split('.').pop() || 'jpg';
         originalImageUrl = `orig_${uuidv4()}.${ext}`;
@@ -58,13 +54,11 @@ export async function POST(request: Request) {
         await supabase.storage.from('ar_images').upload(processedImageUrl, processedFile);
       }
 
-      // 💡 MindAR トラッキングデータ (.mind) のアップロード処理
       if (mindFile) {
         mindFileUrl = `minds/mind_${uuidv4()}.mind`;
         await supabase.storage.from('ar_images').upload(mindFileUrl, mindFile);
-        
-        arMode = 'mindar'; // ARモードをMindARに切り替え
-        targetImageUrl = processedImageUrl || originalImageUrl; // マーカーとなる元の画像パスを保存
+        arMode = 'mindar';
+        targetImageUrl = processedImageUrl || originalImageUrl;
       }
     }
 
@@ -81,18 +75,15 @@ export async function POST(request: Request) {
         status: 'pending',
         client_id: clientId,
         option_details: optionDetails,
-        ar_mode: arMode,                  // 💡 ARモード
-        mind_file_url: mindFileUrl,       // 💡 .mindファイルのパス
-        target_image_url: targetImageUrl, // 💡 ターゲット画像のパス
+        ar_mode: arMode,
+        mind_file_url: mindFileUrl,
+        target_image_url: targetImageUrl,
       })
       .select()
       .single();
 
     if (orderError) throw orderError;
 
-    // ==========================================
-    // 3. 画像データの紐付け (order_images テーブル)
-    // ==========================================
     if (processedImageUrl || originalImageUrl) {
       await supabase.from('order_images').insert({
         order_id: order.id,
@@ -102,62 +93,91 @@ export async function POST(request: Request) {
     }
 
     // ==========================================
-    // 4. メール送信用：システム設定の取得
+    // 3. メール送信用：システム設定の取得
     // ==========================================
     const { data: settings } = await supabase.from('system_settings').select('*');
     const getSetting = (key: string) => settings?.find(s => s.key === key)?.value || '';
 
     // ==========================================
-    // 5. サンクスメール（自動返信）の送信処理
+    // 4. サンクスメール（自動返信）の送信処理
     // ==========================================
+    let mailErrorMsg = null;
     try {
+      // 💡 Vercelの環境変数 (SMTP_HOST, SMTP_USER, SMTP_PASS) が正しく設定されているか確認
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        throw new Error('SMTP credentials are not configured in Vercel Environment Variables.');
+      }
+
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'sv***.xserver.jp', // ※Vercelの環境変数に設定してください
+        host: process.env.SMTP_HOST || 'sv***.xserver.jp',
         port: 465,
-        secure: true,
+        secure: true, // true for 465, false for other ports
         auth: {
-          user: process.env.SMTP_USER || 'info@kototama-ar.com',
-          pass: process.env.SMTP_PASS, // ※Vercelの環境変数に設定してください
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
         },
       });
 
-      // メールテンプレートテキストの読み込み（src/data/customer_mail.txt）
-      let mailText = '';
-      try {
-        const filePath = path.join(process.cwd(), 'src/data/customer_mail.txt');
-        mailText = fs.readFileSync(filePath, 'utf8');
-      } catch (e) {
-        // ファイルが見つからない場合のフォールバック（保険）
-        mailText = `{{CUSTOMER_NAME}} 様\n\nご注文ありがとうございます。\n以下の内容で承りました。\n\n{{OPTION_DETAILS}}\n合計金額: ¥{{TOTAL_PRICE}}\n\n【お振込先】\n{{BANK_NAME}} {{BANK_BRANCH}}\n口座番号: {{BANK_NUMBER}}\n口座名義: {{BANK_USER_NAME}}\n\n※ご入金確認後、制作を進めさせていただきます。`;
-      }
+      // 💡 外部ファイル読み込みによるエラーを防ぐため、テンプレートを直接定義
+      const mailText = `
+${customerName} 様
 
-      // 変数の置換
-      mailText = mailText
-        .replace(/{{CUSTOMER_NAME}}/g, customerName)
-        .replace(/{{OPTION_DETAILS}}/g, optionDetails)
-        .replace(/{{TOTAL_PRICE}}/g, totalPrice.toLocaleString())
-        .replace(/{{BANK_NAME}}/g, getSetting('BANK_NAME'))
-        .replace(/{{BANK_BRANCH}}/g, getSetting('BANK_BRANCH'))
-        .replace(/{{BANK_NUMBER}}/g, getSetting('BANK_NUMBER'))
-        .replace(/{{BANK_USER_NAME}}/g, getSetting('BANK_USER_NAME'));
+この度は「ことたま」をご注文いただき、誠にありがとうございます。
+以下の内容でご注文を承りました。
+
+--------------------------------------------------
+【ご注文内容】
+${optionDetails}
+--------------------------------------------------
+合計金額: ¥${totalPrice.toLocaleString()}（税込・送料込）
+
+【お振込先のご案内】
+恐れ入りますが、以下の口座へお振込をお願いいたします。
+ご入金の確認ができ次第、制作と発送の準備を進めさせていただきます。
+
+銀行名 ：${getSetting('BANK_NAME')}
+支店名 ：${getSetting('BANK_BRANCH')}
+口座番号：${getSetting('BANK_NUMBER')}
+口座名義：${getSetting('BANK_USER_NAME')}
+
+※お振込手数料はお客様のご負担にてお願いいたします。
+※ご注文から7日以内にお振込が確認できない場合、自動キャンセルとなる場合がございます。
+
+ご不明な点がございましたら、本メールへの返信にてお問い合わせください。
+引き続きよろしくお願いいたします。
+
+==================================================
+ことたま - 大切なメッセージを風化させないARキーホルダー
+https://kototama-ar.com/
+==================================================
+      `.trim();
 
       // お客様への送信（同時にinfo宛にもBCCで送信）
       await transporter.sendMail({
-        from: `"ことたま" <${process.env.SMTP_USER || 'info@kototama-ar.com'}>`,
+        from: `"ことたま" <${process.env.SMTP_USER}>`,
         to: email,
-        bcc: process.env.SMTP_USER || 'info@kototama-ar.com',
+        bcc: process.env.SMTP_USER,
         subject: '【ことたま】ご注文を承りました',
         text: mailText,
       });
-    } catch (mailError) {
-      console.error('Mail sending failed:', mailError);
-      // メールの送信に失敗しても、注文データの保存は成功しているのでエラーにはせず処理を続行します
+      
+      console.log('✅ Mail sent successfully to:', email);
+
+    } catch (mailError: any) {
+      console.error('❌ Mail sending failed:', mailError);
+      mailErrorMsg = mailError.message; // エラーメッセージを保持
     }
 
     // ==========================================
-    // 6. フロントエンドへの完了レスポンス
+    // 5. フロントエンドへの完了レスポンス
     // ==========================================
-    return NextResponse.json({ success: true, hashId });
+    // メール送信に失敗しても、注文自体は成功しているので success: true を返す
+    // ただし、デバッグ用に mail_status を追加
+    return NextResponse.json({ 
+      success: true, 
+      hashId,
+      mail_status: mailErrorMsg ? `Failed: ${mailErrorMsg}` : 'Sent Successfully'
+    });
 
   } catch (error: any) {
     console.error('Order API Error:', error);

@@ -4,18 +4,16 @@
   const scriptTag = document.getElementById('ar-embed-script');
   const clientId = scriptTag ? scriptTag.getAttribute('data-client-id') : 'direct';
 
-  // 💡 DBから設定を取得（PRODUCT_ から始まるキーを動的に商品として抽出）
+  // 💡 DBから設定を取得
   let s = { PRICE_TEMPLATE: 500, PRICE_MIND_AR: 3000, PRICE_TAX: 0.1, PRICE_POSTAGE: 380, PRICE_KEY_RING: 1500, PRICE_CHARM: 2800 };
   let customProducts = [];
   
   try {
-    // 💡 修正: 正しいサブドメインに書き換え
     const res = await fetch('https://app.kototama-ar.com/api/settings');
     if (res.ok) {
       const dbSettings = await res.json();
       for (const key in dbSettings) {
         if (key.startsWith('PRODUCT_')) {
-          // 例: PRODUCT_ACRYLIC = "アクリルスタンド,4500" のようにカンマ区切りで取得
           const parts = String(dbSettings[key]).split(',');
           if (parts.length >= 2) {
             customProducts.push({ name: parts[0].trim(), price: Number(parts[1].trim()), key: key });
@@ -25,15 +23,13 @@
         }
       }
     }
-  } catch (e) { console.warn('設定の取得に失敗しました。デフォルト値を使用します。'); }
+  } catch (e) { console.warn('設定の取得に失敗しました。'); }
 
-  // カスタム商品が1つも登録されていない場合は、デフォルトの2つを表示
   let products = customProducts.length > 0 ? customProducts : [
     { name: 'キーホルダー', price: s.PRICE_KEY_RING, key: 'PRODUCT_KEY_RING' },
     { name: 'リボンチャーム', price: s.PRICE_CHARM, key: 'PRODUCT_CHARM' }
   ];
 
-  // 💡 商品のラジオボタンを動的に生成
   let productRadiosHtml = '';
   products.forEach((p, idx) => {
     const checked = idx === 0 ? 'checked' : '';
@@ -73,14 +69,17 @@
     .kt-price-val { font-weight: 700; color: #111827; } .kt-total-val { color: #e11d48; font-size: 1.8rem; font-weight: 900; }
     .kt-submit-btn { width: 100%; padding: 20px; background: linear-gradient(135deg, #f43f5e, #e11d48); color: #fff; border: none; border-radius: 50px; font-size: 1.2rem; font-weight: 800; cursor: pointer; transition: background 0.3s; }
     .kt-submit-btn:disabled { background: #9ca3af; cursor: not-allowed; }
-    .kt-result { text-align: center; padding: 40px 20px; display: none; }
     .kt-file-area { background: #fff; border: 2px dashed #fda4af; padding: 16px; border-radius: 10px; text-align: center; }
+    
+    /* モーダル用CSS */
     .kt-modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(17, 24, 39, 0.85); z-index: 999999; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
-    .kt-modal-content { background: #fff; width: 95%; max-width: 600px; border-radius: 20px; padding: 24px; }
+    .kt-modal-content { background: #fff; width: 95%; max-width: 600px; border-radius: 20px; padding: 32px; text-align: center; position: relative; animation: kt-pop 0.3s ease-out; }
+    @keyframes kt-pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     .kt-crop-container { width: 100%; height: 50vh; max-height: 450px; background: #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
     .kt-modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
     .kt-btn-cancel { padding: 12px 24px; background: #f3f4f6; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
     .kt-btn-confirm { padding: 12px 24px; background: #f43f5e; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+    .kt-btn-close-thanks { margin-top: 24px; padding: 14px 32px; background: #f43f5e; color: white; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; font-size: 1.1rem; }
     @media (max-width: 600px) { .kt-form-body { padding: 16px; } }
   `;
   document.head.appendChild(style);
@@ -160,25 +159,40 @@
           <button type="submit" id="kt-submit-btn" class="kt-submit-btn">この内容で登録する</button>
         </div>
       </form>
-      <div id="kt-result-message" class="kt-result">
-        <div style="font-size: 4rem; margin-bottom: 16px;">🎉</div>
-        <h3 style="color: #be123c; font-size: 1.5rem; font-weight: 800; margin-bottom: 16px;">ご注文ありがとうございます！</h3>
-        <p style="color: #4b5563;">ご入力いただいたメールアドレス宛に、お振込先などのご案内を送信いたしました。</p>
-      </div>
     </div>
     
+    <!-- トリミング用モーダル -->
     <div id="kt-crop-modal" class="kt-modal-overlay">
       <div class="kt-modal-content">
-        <h3 style="margin-top:0; color:#881337;">✂️ 画像のトリミング</h3>
+        <h3 style="margin-top:0; color:#881337; text-align:left;">✂️ 画像のトリミング</h3>
         <div class="kt-crop-container"><img id="kt-crop-image" src="" style="max-width: 100%; display: block;" /></div>
-        <div class="kt-modal-actions"><button type="button" id="kt-btn-crop-cancel" class="kt-btn-cancel">キャンセル</button><button type="button" id="kt-btn-crop-confirm" class="kt-btn-confirm">確定</button></div>
+        <div class="kt-modal-actions">
+          <button type="button" id="kt-btn-crop-cancel" class="kt-btn-cancel">キャンセル</button>
+          <button type="button" id="kt-btn-crop-confirm" class="kt-btn-confirm">確定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- サンクスモーダル（送信完了後に表示） -->
+    <div id="kt-thanks-modal" class="kt-modal-overlay">
+      <div class="kt-modal-content" style="max-width: 500px;">
+        <div style="font-size: 5rem; margin-bottom: 16px; animation: bounce 1s infinite;">🎉</div>
+        <h2 style="color: #be123c; font-size: 1.8rem; font-weight: 900; margin-bottom: 16px;">ご注文ありがとうございます！</h2>
+        <p style="color: #4b5563; line-height: 1.6; font-size: 1rem; margin-bottom: 24px;">
+          ご入力いただいたメールアドレス宛に、<br>
+          <strong>ご注文の控えとお振込先のご案内</strong>を送信いたしました。<br><br>
+          メールが届かない場合は、迷惑メールフォルダをご確認いただくか、お問い合わせください。
+        </p>
+        <button type="button" id="kt-btn-close-thanks" class="kt-btn-close-thanks">閉じる</button>
       </div>
     </div>
   `;
 
   let cropperInstance = null, croppedBlob = null, originalFile = null;
   const fileInput = document.getElementById('kt-file'), cropModal = document.getElementById('kt-crop-modal'), cropImage = document.getElementById('kt-crop-image');
+  const thanksModal = document.getElementById('kt-thanks-modal');
 
+  // ... (ファイル選択・トリミング・金額計算の処理は変更なし) ...
   fileInput.addEventListener('change', (e) => {
     originalFile = e.target.files[0];
     if (!originalFile) return;
@@ -209,7 +223,6 @@
   });
 
   const updateFormState = () => {
-    // 💡 選択された商品の data-price 属性から動的に金額を取得
     const selectedItem = document.querySelector('input[name="itemType"]:checked');
     const imageType = document.querySelector('input[name="imageType"]:checked').value;
     const arMode = document.querySelector('input[name="arMode"]:checked').value;
@@ -218,19 +231,14 @@
     if (imageType === 'テンプレート') {
       document.getElementById('kt-file-group').style.display = 'none'; fileInput.removeAttribute('required');
       document.getElementById('kt-template-group').style.display = 'block'; document.getElementById('kt-template-id').setAttribute('required', 'true');
-      
-      arModeGroup.style.display = 'none';
-      document.querySelector('input[name="arMode"][value="hiro"]').checked = true; 
+      arModeGroup.style.display = 'none'; document.querySelector('input[name="arMode"][value="hiro"]').checked = true; 
     } else {
       document.getElementById('kt-file-group').style.display = 'block'; fileInput.setAttribute('required', 'true');
       document.getElementById('kt-template-group').style.display = 'none'; document.getElementById('kt-template-id').removeAttribute('required');
-      
       arModeGroup.style.display = 'block'; 
     }
 
     const currentArMode = document.querySelector('input[name="arMode"]:checked').value;
-    
-    // 💡 動的計算
     const basePrice = selectedItem ? Number(selectedItem.dataset.price) : 0;
     const optTemplatePrice = imageType === 'テンプレート' ? s.PRICE_TEMPLATE : 0;
     const optMindArPrice = currentArMode === 'mindar' ? s.PRICE_MIND_AR : 0;
@@ -280,6 +288,14 @@
     });
   };
 
+  // 💡 サンクスモーダルを閉じる処理
+  document.getElementById('kt-btn-close-thanks').addEventListener('click', () => {
+    thanksModal.style.display = 'none';
+    // フォームをリセットする
+    document.getElementById('ar-embed-form').reset();
+    updateFormState();
+  });
+
   document.getElementById('ar-embed-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('kt-submit-btn');
@@ -316,13 +332,20 @@
     }
 
     try {
-      // 💡 修正: 正しいサブドメインに書き換え
       const res = await fetch('https://app.kototama-ar.com/api/embed-order', { method: 'POST', body: formData });
-      if ((await res.json()).success) {
-        document.getElementById('ar-embed-form').style.display = 'none';
-        document.getElementById('kt-result-message').style.display = 'block';
+      const result = await res.json();
+      if (result.success) {
+        // 💡 成功時にサンクスモーダルを表示
+        thanksModal.style.display = 'flex';
+      } else {
+        alert('注文エラー: ' + (result.error || '不明なエラーが発生しました'));
       }
-    } catch (err) { alert('通信エラーが発生しました'); } 
-    finally { btn.disabled = false; btn.textContent = 'この内容で登録する'; }
+    } catch (err) { 
+      alert('通信エラーが発生しました'); 
+    } 
+    finally { 
+      btn.disabled = false; 
+      btn.textContent = 'この内容で登録する'; 
+    }
   });
 })();
