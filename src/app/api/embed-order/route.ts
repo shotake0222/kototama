@@ -17,53 +17,24 @@ export async function POST(request: Request) {
     const email = formData.get('email') as string;
     const clientId = formData.get('clientId') as string;
     const optionDetails = formData.get('optionDetails') as string;
-    const totalPrice = Number(formData.get('totalPrice'));
+    const totalPrice = Number(formData.get('totalPrice')) || 0;
     
-    // ファイル関連の取得
+    // 追加・ファイル関連の取得
+    const animationType = (formData.get('animationType') as string) || 'none';
     const templateId = formData.get('templateId') as string | null;
     const originalFile = formData.get('originalFile') as File | null;
     const processedFile = formData.get('processedFile') as File | null;
     const mindFile = formData.get('mindFile') as File | null;
+    const targetImageFile = formData.get('targetImageFile') as File | null;
 
     const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
 
-    let processedImageUrl = null;
-    let originalImageUrl = null;
-    let mindFileUrl = null;
+    let arMode = mindFile ? 'mindar' : 'hiro';
     let targetImageUrl = null;
-    let arMode = 'hiro'; 
+    let mindFileUrl = null;
 
     // ==========================================
-    // 1. ファイルをSupabase Storageへアップロード
-    // ==========================================
-    if (templateId) {
-      let formattedId = templateId.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).toUpperCase().trim();
-      formattedId = formattedId.replace(/ー|−|_/g, '-');
-      if (!formattedId.includes('-')) formattedId = formattedId.replace('T', 'T-');
-      processedImageUrl = `templates/${formattedId}.jpg`;
-    } else {
-      if (originalFile) {
-        const ext = originalFile.name.split('.').pop() || 'jpg';
-        originalImageUrl = `orig_${uuidv4()}.${ext}`;
-        await supabase.storage.from('ar_images').upload(originalImageUrl, originalFile);
-      }
-      
-      if (processedFile) {
-        const ext = processedFile.name.split('.').pop() || 'jpg';
-        processedImageUrl = `proc_${uuidv4()}.${ext}`;
-        await supabase.storage.from('ar_images').upload(processedImageUrl, processedFile);
-      }
-
-      if (mindFile) {
-        mindFileUrl = `minds/mind_${uuidv4()}.mind`;
-        await supabase.storage.from('ar_images').upload(mindFileUrl, mindFile);
-        arMode = 'mindar';
-        targetImageUrl = processedImageUrl || originalImageUrl;
-      }
-    }
-
-    // ==========================================
-    // 2. データベースへの登録 (orders テーブル)
+    // 1. Ordersテーブルに注文データを作成 (先に行う)
     // ==========================================
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -75,31 +46,98 @@ export async function POST(request: Request) {
         status: 'pending',
         client_id: clientId,
         option_details: optionDetails,
-        ar_mode: arMode,
-        mind_file_url: mindFileUrl,
-        target_image_url: targetImageUrl,
+        animation_type: animationType,
+        ar_mode: arMode
       })
       .select()
       .single();
 
     if (orderError) throw orderError;
 
-    if (processedImageUrl || originalImageUrl) {
-      await supabase.from('order_images').insert({
-        order_id: order.id,
-        original_image_url: originalImageUrl,
-        processed_image_url: processedImageUrl,
-      });
+    // ==========================================
+    // 2. ターゲット画像（MindAR用）の処理
+    // ==========================================
+    if (mindFile && targetImageFile) {
+      const mindExt = mindFile.name.split('.').pop() || 'mind';
+      const targetExt = targetImageFile.name.split('.').pop() || 'jpg';
+      const baseName = `target_${uuidv4().substring(0,8)}`;
+      
+      mindFileUrl = `minds/${baseName}.${mindExt}`;
+      targetImageUrl = `targets/${baseName}.${targetExt}`;
+      
+      await supabase.storage.from('ar_images').upload(mindFileUrl, mindFile);
+      await supabase.storage.from('ar_images').upload(targetImageUrl, targetImageFile);
+      
+      // 生成したファイルのURLをordersテーブルに紐付け
+      await supabase.from('orders').update({ 
+        mind_file_url: mindFileUrl, 
+        target_image_url: targetImageUrl 
+      }).eq('id', order.id);
     }
 
     // ==========================================
-    // 3. メール送信用：システム設定の取得
+    // 3. 表示するARオブジェクト（画像）の処理
+    // ==========================================
+    if (templateId) {
+      // テンプレート指定の場合
+      let formattedId = templateId.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).toUpperCase().trim();
+      formattedId = formattedId.replace(/ー|−|_/g, '-');
+      if (!formattedId.includes('-')) formattedId = formattedId.replace('T', 'T-');
+      
+      const processedImageUrl = `templates/${formattedId}.jpg`;
+      
+      await supabase.from('order_images').insert({ 
+        order_id: order.id, 
+        processed_image_url: processedImageUrl
+      });
+      
+    } else {
+      // 画像アップロードの場合
+      if (originalFile) {
+        const ext = originalFile.name.split('.').pop() || 'jpg';
+        const originalImageUrl = `orig_${uuidv4()}.${ext}`;
+        await supabase.storage.from('ar_images').upload(originalImageUrl, originalFile);
+        
+        let processedImageUrl = null;
+        if (processedFile) {
+          const pExt = processedFile.name.split('.').pop() || 'jpg';
+          processedImageUrl = `proc_${uuidv4()}.${pExt}`;
+          await supabase.storage.from('ar_images').upload(processedImageUrl, processedFile);
+        }
+        
+        await supabase.from('order_images').insert({
+          order_id: order.id,
+          original_image_url: originalImageUrl,
+          processed_image_url: processedImageUrl || originalImageUrl
+        });
+      }
+
+      // アルバム機能（2枚目以降の画像）の処理
+      const albumFiles = formData.getAll('albumFiles');
+      if (albumFiles && albumFiles.length > 0) {
+        for (const file of albumFiles) {
+          const f = file as File;
+          const ext = f.name.split('.').pop() || 'jpg';
+          const path = `proc_album_${uuidv4()}.${ext}`;
+          
+          await supabase.storage.from('ar_images').upload(path, f);
+          
+          await supabase.from('order_images').insert({
+            order_id: order.id,
+            processed_image_url: path
+          });
+        }
+      }
+    }
+
+    // ==========================================
+    // 4. メール送信用：システム設定の取得
     // ==========================================
     const { data: settings } = await supabase.from('system_settings').select('*');
     const getSetting = (key: string) => settings?.find(s => s.key === key)?.value || '';
 
     // ==========================================
-    // 4. メールの送信処理
+    // 5. メールの送信処理
     // ==========================================
     let mailErrorMsg = null;
     try {
@@ -117,7 +155,7 @@ export async function POST(request: Request) {
         },
       });
 
-      // 💡 ① お客様向けメールの本文（ARのURLなどは載せない）
+      // お客様向けメールの本文
       const customerMailText = `
 ${customerName} 様
 
@@ -147,7 +185,7 @@ https://kototama-ar.com/
 ==================================================
       `.trim();
 
-      // 💡 ② 運営側向けメールの本文（ARのURLなど管理用データを載せる）
+      // 運営側向けメールの本文
       const adminMailText = `
 ※このメールはシステムからの自動送信です。
 
@@ -172,10 +210,11 @@ ${optionDetails}
 【AR・画像情報】
 モード: ${arMode === 'mindar' ? 'イメージトラッキング(MindAR)' : '通常マーカー(Hiro)'}
 テンプレート指定: ${templateId || 'なし（画像アップロード）'}
+アニメーション: ${animationType}
 AR用URL: https://app.kototama-ar.com/ar?uid=${hashId}
       `.trim();
 
-      // ✉️ 1. お客様への送信（お客様のアドレスのみ）
+      // 1. お客様への送信
       await transporter.sendMail({
         from: `"ことたま" <${process.env.SMTP_USER}>`,
         to: email,
@@ -183,16 +222,16 @@ AR用URL: https://app.kototama-ar.com/ar?uid=${hashId}
         text: customerMailText,
       });
       
-      // ✉️ 2. 運営側（複数人）への送信
+      // 2. 運営側（複数人）への送信
       const adminEmails = [
-        process.env.SMTP_USER,             // 元々のinfoアドレス
-        'shotaro6022@gmail.com',           // 追加アドレス1
-        'shotake0222@gmail.com'            // 追加アドレス2
+        process.env.SMTP_USER,
+        'shotaro6022@gmail.com',
+        'shotake0222@gmail.com'
       ];
 
       await transporter.sendMail({
         from: `"ことたまシステム" <${process.env.SMTP_USER}>`,
-        to: adminEmails, // 運営側はBCCではなくTOで一斉送信
+        to: adminEmails,
         subject: `【新規注文】${customerName} 様よりご注文が入りました`,
         text: adminMailText,
       });
@@ -205,7 +244,7 @@ AR用URL: https://app.kototama-ar.com/ar?uid=${hashId}
     }
 
     // ==========================================
-    // 5. フロントエンドへの完了レスポンス
+    // 6. フロントエンドへの完了レスポンス
     // ==========================================
     return NextResponse.json({ 
       success: true, 
