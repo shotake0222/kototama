@@ -23,7 +23,6 @@ function ARViewer() {
   
   const supabase = createClient();
 
-  // 1. データの取得
   useEffect(() => {
     if (!uid) {
       setError('NFCタグの情報が読み取れません。');
@@ -72,10 +71,8 @@ function ARViewer() {
 
   const isArReady = aframeLoaded && arjsLoaded;
 
-  // 💡 2. 左に寄るバグを直すため、AR起動後に強制的に画面サイズを再計算させる
   useEffect(() => {
     if (isArReady) {
-      // 少し遅延させてからリサイズイベントを連発して、AR.jsに正しい画面サイズを認識させる
       const timer1 = setTimeout(() => window.dispatchEvent(new Event('resize')), 500);
       const timer2 = setTimeout(() => window.dispatchEvent(new Event('resize')), 1500);
       return () => { clearTimeout(timer1); clearTimeout(timer2); };
@@ -99,46 +96,48 @@ function ARViewer() {
     );
   }
 
-  // 💡 3. 最強のCSS: Next.jsの干渉をすべて無視して動画とキャンバスを全画面固定にする
   const globalCss = `
     body, html, #__next {
       margin: 0 !important;
       padding: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
+      width: 100% !important;
+      height: 100% !important;
       overflow: hidden !important;
       background-color: transparent !important;
     }
-    /* ARライブラリが生成するカメラ映像を画面中央＆全画面に固定 */
     video {
       position: fixed !important;
-      top: 50% !important;
-      left: 50% !important;
-      min-width: 100vw !important;
-      min-height: 100vh !important;
-      width: auto !important;
-      height: auto !important;
-      transform: translate(-50%, -50%) !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      transform: none !important;
       z-index: -2 !important;
       object-fit: cover !important;
     }
-    /* ARオブジェクトを描画する透明なキャンバスを全画面に固定 */
     .a-canvas {
       position: fixed !important;
       top: 0 !important;
       left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
+      width: 100% !important;
+      height: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
       z-index: 10 !important;
     }
-    /* 不要なUIを隠す */
     .mindar-ui-overlay { display: none !important; }
   `;
 
+  // ====================================================
+  // 💡 【モード1】カスタムマーカー（ことたまマーカー）読込
+  // ====================================================
   if (arMode === 'hiro') {
     const arHtml = `
-      <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;" renderer="logarithmicDepthBuffer: true;">
-        <a-marker preset="hiro">
+      <!-- 💡 ここに patternRatio: 0.9; を追加しました！ -->
+      <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; patternRatio: 0.9;" renderer="logarithmicDepthBuffer: true;">
+        <a-marker type="pattern" url="/markers/pattern-kototama.patt">
           <a-image 
             src="${images[0]}" 
             position="0 0.5 0" 
@@ -168,6 +167,9 @@ function ARViewer() {
     );
   }
 
+  // ====================================================
+  // 💡 【モード2】MindAR（イメージトラッキング）モード
+  // ====================================================
   if (arMode === 'mindar') {
     const targetSrc = mindFileUrl || ''; 
     const mindArHtml = `
