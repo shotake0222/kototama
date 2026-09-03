@@ -36,6 +36,81 @@ const DEFAULT_CLIENT_FORM_CONFIG = {
   default_animation_type: 'none',
   custom_note: null as string | null,
 };
+// メール文面は client_form_config ではなく mail_templates テーブル
+// （trigger_type='thanks', client_id列）で管理しています。
+// clientMailTemplateMap / globalMailTemplate を参照してください。
+
+// クライアントごとの注文完了メール文面編集用のミニコンポーネント。
+// テキストエリアは行内で直接編集させたいため（promptでは複数行編集できないため）
+// 独立したコンポーネントに分けてローカルstateを持たせています。
+function ClientMailEditor({
+  clientId,
+  initialSubject,
+  initialBody,
+  globalSubject,
+  globalBody,
+  hasOverride,
+  onSave,
+  onDelete,
+}: {
+  clientId: string;
+  initialSubject: string;
+  initialBody: string;
+  globalSubject: string;
+  globalBody: string;
+  hasOverride: boolean;
+  onSave: (clientId: string, subject: string, body: string) => void;
+  onDelete: (clientId: string) => void;
+}) {
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
+  const [dirty, setDirty] = useState(false);
+
+  return (
+    <div className="bg-white border rounded-lg p-4 space-y-3">
+      <div className="bg-indigo-50 border border-indigo-100 rounded p-3 text-xs text-indigo-700">
+        差し込み変数: <code>{'{{CUSTOMER_NAME}}'}</code> <code>{'{{TOTAL_PRICE}}'}</code> <code>{'{{AR_URL}}'}</code> <code>{'{{CLIENT_NAME}}'}</code>（他に system_settings のキー名も <code>{'{{KEY}}'}</code> の形で使えます）
+        <br />空欄のまま保存すると、共通テンプレート（{globalSubject || '未設定'}）が使われます。
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-gray-500 mb-1">件名</label>
+        <input
+          value={subject}
+          onChange={(e) => { setSubject(e.target.value); setDirty(true); }}
+          className="w-full border p-2 rounded text-sm"
+          placeholder={globalSubject || '（共通テンプレート未設定）'}
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-gray-500 mb-1">本文</label>
+        <textarea
+          value={body}
+          onChange={(e) => { setBody(e.target.value); setDirty(true); }}
+          rows={6}
+          className="w-full border p-2 rounded text-sm"
+          placeholder={globalBody || '（共通テンプレート未設定）'}
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        {hasOverride && (
+          <button
+            onClick={() => onDelete(clientId)}
+            className="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-4 py-2 rounded text-xs transition"
+          >
+            共通テンプレートに戻す（削除）
+          </button>
+        )}
+        <button
+          onClick={() => { onSave(clientId, subject, body); setDirty(false); }}
+          disabled={!dirty}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-bold px-4 py-2 rounded text-xs transition"
+        >
+          このメール文面を保存
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const supabase = createClient();
@@ -53,6 +128,8 @@ export default function Dashboard() {
   const [clients, setClients] = useState<any[]>([]);
   const [clientSettingsMap, setClientSettingsMap] = useState<{ [clientId: string]: any[] }>({});
   const [clientFormConfigMap, setClientFormConfigMap] = useState<{ [clientId: string]: any }>({});
+  const [clientMailTemplateMap, setClientMailTemplateMap] = useState<{ [clientId: string]: any }>({});
+  const [globalMailTemplate, setGlobalMailTemplate] = useState<any>(null);
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [orderClientFilter, setOrderClientFilter] = useState('');
 
@@ -106,6 +183,19 @@ export default function Dashboard() {
       const map: { [k: string]: any } = {};
       clientCfgData.forEach((row: any) => { map[row.client_id] = row; });
       setClientFormConfigMap(map);
+    }
+
+    // 注文完了メールのテンプレート（trigger_type='thanks'）。
+    // client_id が入っている行がOEM提供先専用の上書き、NULLの行が共通テンプレート。
+    const { data: mailTemplatesData } = await supabase.from('mail_templates').select('*').eq('trigger_type', 'thanks');
+    if (mailTemplatesData) {
+      const map: { [k: string]: any } = {};
+      let global: any = null;
+      mailTemplatesData.forEach((row: any) => {
+        if (row.client_id) map[row.client_id] = row; else global = row;
+      });
+      setClientMailTemplateMap(map);
+      setGlobalMailTemplate(global);
     }
   };
 
@@ -576,6 +666,62 @@ export default function Dashboard() {
     fetchData();
   };
 
+  // 注文完了メールの文面（クライアント別上書き）を mail_templates に保存する。
+  // trigger_type='thanks' かつ client_id が一致する行があれば更新、無ければ新規作成。
+  const handleSaveClientMail = async (clientId: string, subject: string, body: string) => {
+    try {
+      const { data: existing } = await supabase
+        .from('mail_templates')
+        .select('id')
+        .eq('trigger_type', 'thanks')
+        .eq('client_id', clientId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase.from('mail_templates').update({ subject, body_content: body }).eq('id', existing.id);
+      } else {
+        await supabase.from('mail_templates').insert({ trigger_type: 'thanks', client_id: clientId, subject, body_content: body });
+      }
+      fetchData();
+      alert('メール文面を保存しました。');
+    } catch (err) {
+      alert('保存に失敗しました。mail_templatesテーブルにclient_id列が追加されているかご確認ください（003_mail_templates_client_override.sql）。');
+    }
+  };
+
+  // クライアント専用のメールテンプレートを削除し、共通テンプレートに戻す
+  const handleDeleteClientMail = async (clientId: string) => {
+    if (!confirm('このOEM提供先専用のメール文面を削除し、共通テンプレートに戻しますか？')) return;
+    await supabase.from('mail_templates').delete().eq('trigger_type', 'thanks').eq('client_id', clientId);
+    fetchData();
+  };
+
+  // OEM提供先ポータル（/oem）用のログインアカウントを発行する。
+  // 実際の作成処理は Service Role Key を使う app/api/oem-accounts/route.ts で行う。
+  const handleIssueOemAccount = async (clientId: string) => {
+    const email = prompt('OEM提供先のログイン用メールアドレスを入力してください');
+    if (!email) return;
+    try {
+      const res = await fetch('/api/oem-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, email }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'failed');
+      if (json.reused) {
+        alert(`既存のアカウント（${json.email}）をこのOEM提供先に紐付けました。\nパスワードは変更していません。`);
+      } else {
+        alert(
+          `アカウントを発行しました。\n\nログインURL: /oem\nメールアドレス: ${json.email}\n仮パスワード: ${json.tempPassword}\n\n` +
+          `※このパスワードは二度と表示されません。必ず今すぐ控えて提供先へお伝えください。`
+        );
+      }
+    } catch (err) {
+      alert('アカウント発行に失敗しました。');
+    }
+  };
+
   const buildEmbedTag = (id: string) =>
     id
       ? `<div id="ar-order-form-container"></div>\n<script src="https://app.kototama-ar.com/embed.js" id="ar-embed-script" data-client-id="${id}"></script>`
@@ -949,6 +1095,17 @@ export default function Dashboard() {
                           </div>
                         </div>
 
+                        {/* ログインアカウント（OEMセルフサービス・ポータル用） */}
+                        <div>
+                          <h4 className="font-bold text-gray-700 mb-3">🔑 ログインアカウント（/oem ポータル）</h4>
+                          <div className="bg-white border rounded-lg p-4 flex items-center justify-between flex-wrap gap-3">
+                            <p className="text-sm text-gray-500 flex-1 min-w-[240px]">
+                              アカウントを発行すると、この提供先はご自身で /oem にログインし、料金・フォーム内容・デフォルトマーカー・注文完了メールの文面を自分で編集できるようになります。
+                            </p>
+                            <button onClick={() => handleIssueOemAccount(c.client_id)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-lg text-xs shadow-sm transition whitespace-nowrap">🔑 ログインアカウントを発行</button>
+                          </div>
+                        </div>
+
                         {/* フォーム内容 */}
                         <div>
                           <h4 className="font-bold text-gray-700 mb-3">📝 フォーム内容の設定</h4>
@@ -979,6 +1136,21 @@ export default function Dashboard() {
                               <button onClick={() => handleToggleFormOption(c.client_id, 'use_default_marker', cfg.use_default_marker)} disabled={!cfg.default_marker_target_url} className={`font-bold px-3 py-2 rounded text-xs transition disabled:opacity-40 ${cfg.use_default_marker ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{cfg.use_default_marker ? '✅ 全ユーザーに強制適用中' : 'このマーカーを全ユーザーに適用'}</button>
                             </div>
                           </div>
+                        </div>
+
+                        {/* 注文完了メールの文面 */}
+                        <div>
+                          <h4 className="font-bold text-gray-700 mb-3">✉️ 注文完了メールの文面</h4>
+                          <ClientMailEditor
+                            clientId={c.client_id}
+                            initialSubject={clientMailTemplateMap[c.client_id]?.subject || ''}
+                            initialBody={clientMailTemplateMap[c.client_id]?.body_content || ''}
+                            globalSubject={globalMailTemplate?.subject || ''}
+                            globalBody={globalMailTemplate?.body_content || ''}
+                            hasOverride={!!clientMailTemplateMap[c.client_id]}
+                            onSave={handleSaveClientMail}
+                            onDelete={handleDeleteClientMail}
+                          />
                         </div>
 
                         {/* 料金設定 */}

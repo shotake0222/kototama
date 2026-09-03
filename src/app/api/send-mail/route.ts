@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// サーバーサイド専用のSupabaseクライアント
+// 変更点: RLSをOEM関連テーブル（clients / client_settings / client_form_config /
+// mail_templates）に導入していく前提のため、匿名キーではなく Service Role Key を
+// 使うように変更しています。Service Role は RLS を無視して全テーブルを読み書き
+// できるため、サーバー側（この Route Handler の中）でのみ使用してください。
+// .env に SUPABASE_SERVICE_ROLE_KEY を追加し、NEXT_PUBLIC_ を付けないよう
+// 注意してください（ブラウザに漏れると誰でも全データを読み書きできます）。
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(request: Request) {
   try {
     const { orderId } = await request.json();
-    
+
     // サイトのベースURLを取得（メールへのリンク用）
     const origin = request.headers.get('origin') || 'https://kototama.vercel.app';
 
@@ -29,16 +34,52 @@ export async function POST(request: Request) {
       return acc;
     }, {} as Record<string, string>) || {};
 
+    // 2.5 このOEM提供先の名称（プレースホルダー用。提供先が無ければ空文字）
+    let clientName = '';
+    if (order.client_id) {
+      const { data: clientRow } = await supabase
+        .from('clients')
+        .select('name')
+        .eq('client_id', order.client_id)
+        .maybeSingle();
+      clientName = clientRow?.name || '';
+    }
+
     // 3. 【お客様向け】サンクスメール生成
-    const { data: mailTemplate } = await supabase
-      .from('mail_templates')
-      .select('*')
-      .eq('trigger_type', 'thanks')
-      .single();
+    // ==========================================
+    // ▼▼▼ OEM対応: 注文がどのOEM提供先経由かに応じてテンプレートを切り替える ▼▼▼
+    // mail_templates に client_id 列（003_mail_templates_client_override.sql で追加）
+    // があれば、まずそのOEM提供先専用のテンプレート（trigger_type='thanks' かつ
+    // client_id が一致する行）を探し、無ければ従来通り共通テンプレート
+    // （client_id が NULL の行）にフォールバックします。
+    let mailTemplate: any = null;
+    if (order.client_id) {
+      const { data: clientTemplate } = await supabase
+        .from('mail_templates')
+        .select('*')
+        .eq('trigger_type', 'thanks')
+        .eq('client_id', order.client_id)
+        .maybeSingle();
+      mailTemplate = clientTemplate;
+    }
+    if (!mailTemplate) {
+      const { data: globalTemplate } = await supabase
+        .from('mail_templates')
+        .select('*')
+        .eq('trigger_type', 'thanks')
+        .is('client_id', null)
+        .maybeSingle();
+      mailTemplate = globalTemplate;
+    }
+    // ==========================================
+    // ▲▲▲ 追記ここまで（以降は元の実装と同じ置換ロジック）▲▲▲
+    // ==========================================
 
     let customerBody = mailTemplate ? mailTemplate.body_content : '';
     customerBody = customerBody.replace(/{{CUSTOMER_NAME}}/g, order.customer_name);
     customerBody = customerBody.replace(/{{TOTAL_PRICE}}/g, order.total_price.toLocaleString());
+    customerBody = customerBody.replace(/{{AR_URL}}/g, `${origin}/ar/${order.hash_id}`);
+    customerBody = customerBody.replace(/{{CLIENT_NAME}}/g, clientName);
     Object.keys(settings).forEach((key) => {
       const regex = new RegExp(`{{${key}}}`, 'g');
       customerBody = customerBody.replace(regex, settings[key]);
@@ -55,6 +96,7 @@ export async function POST(request: Request) {
 ・お名前: ${order.customer_name} 様
 ・メールアドレス: ${order.email}
 ・ご請求金額: ${order.total_price.toLocaleString()} 円
+・OEM提供先: ${clientName || '自社サイト（提供先なし）'}
 
 ■ AR（成果物）確認用URL
 ${origin}/ar/${order.hash_id}
