@@ -78,7 +78,10 @@ export async function POST(request: Request) {
     let customerBody = mailTemplate ? mailTemplate.body_content : '';
     customerBody = customerBody.replace(/{{CUSTOMER_NAME}}/g, order.customer_name);
     customerBody = customerBody.replace(/{{TOTAL_PRICE}}/g, order.total_price.toLocaleString());
-    customerBody = customerBody.replace(/{{AR_URL}}/g, `${origin}/ar/${order.hash_id}`);
+    // 🐛 バグ修正（デバッグフェーズ）: /ar はクエリパラメータ ?uid= でハッシュを受け取る
+    // 実装（src/app/ar/page.tsx）で、/ar/<hash> というパス形式のルートは存在しない。
+    // 以前はここが /ar/${hash} になっており、メール内のARリンクが404になっていた。
+    customerBody = customerBody.replace(/{{AR_URL}}/g, `${origin}/ar?uid=${order.hash_id}`);
     customerBody = customerBody.replace(/{{CLIENT_NAME}}/g, clientName);
     Object.keys(settings).forEach((key) => {
       const regex = new RegExp(`{{${key}}}`, 'g');
@@ -99,7 +102,7 @@ export async function POST(request: Request) {
 ・OEM提供先: ${clientName || '自社サイト（提供先なし）'}
 
 ■ AR（成果物）確認用URL
-${origin}/ar/${order.hash_id}
+${origin}/ar?uid=${order.hash_id}
 
 ■ 管理画面ダッシュボード（画像差し替え等）
 ${origin}/admin/dashboard

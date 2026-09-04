@@ -454,6 +454,10 @@
     formData.append('clientId', clientId);
     formData.append('optionDetails', optionsText);
     formData.append('totalPrice', window.currentTotalPrice);
+    // 表示用の参考値。実際にDBへ保存される金額はサーバー側(system_settings)から
+    // 再計算されるため、itemType（商品名）だけは他の情報から復元できないので
+    // ここで明示的に送る。
+    formData.append('itemType', itemType);
     formData.append('animationType', finalAnimType);
     
     if (imageType === 'テンプレート') {

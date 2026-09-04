@@ -2,7 +2,6 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
-import { v4 as uuidv4 } from 'uuid';
 import Script from 'next/script';
 
 type SettingsMap = { [key: string]: string };
@@ -165,6 +164,14 @@ function OrderFormInner({ clientId: clientIdProp }: { clientId?: string }) {
     });
   };
 
+  // 🔒 セキュリティ修正（Phase 0）: 以前はここでブラウザから直接
+  // Supabase（orders / order_images / storage）に書き込んでおり、金額も
+  // ブラウザが計算した totalPrice をそのまま保存していたため、原理上は
+  // 誰でも任意の金額・任意のOEM提供先IDで注文を作成できてしまう状態だった。
+  // 画面の見た目・操作感は変えずに、新設した /api/order（サーバー側で
+  // 金額とデータを検証してからDBに書き込む）にPOSTする形に差し替えている。
+  // MindAR用の .mind ファイル生成だけはブラウザのCanvas/Image APIが必要なため
+  // 引き続きクライアント側で行い、生成済みファイルをアップロードで送る。
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (status === 'unavailable') return;
@@ -174,79 +181,29 @@ function OrderFormInner({ clientId: clientIdProp }: { clientId?: string }) {
     setStatus('submitting');
 
     try {
-      const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${hashId}.${fileExt}`;
+      const needsOwnMarkerCompile = !formConfig.use_default_marker && formConfig.allow_own_marker_upload && trackingFile;
+      const mindBlob = needsOwnMarkerCompile ? await compileImageToMind(trackingFile as File) : null;
 
-      const { error: uploadError } = await supabase.storage.from('ar_images').upload(fileName, file);
-      if (uploadError) throw uploadError;
-
-      // ---- ARトラッキングマーカーの決定 ----
-      // 1. OEM提供先がデフォルトマーカーを強制適用している場合はそれを使用
-      // 2. ユーザーが任意でトラッキング画像をアップロードした場合はそれをコンパイルして使用
-      // 3. どちらも無ければ従来通り Hiro マーカーモード（アップロード無し）
-      let arMode = 'hiro';
-      let targetImageUrl: string | null = null;
-      let mindFileUrl: string | null = null;
-
-      if (formConfig.use_default_marker && formConfig.default_marker_target_url && formConfig.default_marker_mind_url) {
-        arMode = 'mindar';
-        targetImageUrl = formConfig.default_marker_target_url;
-        mindFileUrl = formConfig.default_marker_mind_url;
-      } else if (formConfig.allow_own_marker_upload && trackingFile) {
-        const trackingExt = trackingFile.name.split('.').pop();
-        const trackingImgPath = `targets/${hashId}.${trackingExt}`;
-        const trackingMindPath = `minds/${hashId}.mind`;
-        const mindBlob = await compileImageToMind(trackingFile);
-        await supabase.storage.from('ar_images').upload(trackingImgPath, trackingFile);
-        await supabase.storage.from('ar_images').upload(trackingMindPath, mindBlob);
-        arMode = 'mindar';
-        targetImageUrl = trackingImgPath;
-        mindFileUrl = trackingMindPath;
+      const body = new FormData();
+      body.append('customerName', name);
+      body.append('email', email);
+      if (formConfig.require_phone) body.append('phone', phone);
+      if (clientId) body.append('clientId', clientId);
+      body.append('hasCharm', String(hasCharm));
+      body.append('hasKeyRing', String(hasKeyRing));
+      body.append('originalFile', file);
+      if (needsOwnMarkerCompile && trackingFile && mindBlob) {
+        body.append('trackingFile', trackingFile);
+        body.append('mindFile', new File([mindBlob], 'target.mind', { type: 'application/octet-stream' }));
       }
 
-      const optionDetails = [
-        hasCharm ? 'リボンチャーム' : null,
-        hasKeyRing ? 'キーホルダー' : null,
-      ].filter(Boolean).join(' / ') || null;
-
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .insert([{
-          hash_id: hashId,
-          customer_name: name,
-          email: email,
-          phone: formConfig.require_phone ? phone : null,
-          total_price: totalPrice,
-          client_id: clientId || null,
-          ar_mode: arMode,
-          target_image_url: targetImageUrl,
-          mind_file_url: mindFileUrl,
-          animation_type: formConfig.default_animation_type || 'none',
-          option_details: optionDetails,
-        }])
-        .select().single();
-      if (orderError) throw orderError;
-
-      const { error: imageError } = await supabase
-        .from('order_images')
-        .insert([{ order_id: orderData.id, image_url: fileName }]);
-      if (imageError) throw imageError;
-
-      // ==========================================
-      // ▼▼▼ メール送信APIの呼び出し ▼▼▼
-      // ==========================================
-      await fetch('/api/send-mail', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: orderData.id }),
-      });
-      // ==========================================
-      // ▲▲▲ 追記ここまで ▲▲▲
-      // ==========================================
+      const res = await fetch('/api/order', { method: 'POST', body });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || '不明なエラーが発生しました。');
 
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      setHashUrl(`${origin}/ar/${hashId}`);
+      setTotalPrice(result.totalPrice ?? totalPrice);
+      setHashUrl(`${origin}/ar?uid=${result.hashId}`);
       setStatus('success');
     } catch (error) {
       console.error(error);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import { v4 as uuidv4 } from 'uuid';
+import { computeEmbedOrderTotal } from '@/utils/pricing';
 
 // Supabaseクライアントの初期化
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -17,8 +18,14 @@ export async function POST(request: Request) {
     const email = formData.get('email') as string;
     const clientId = formData.get('clientId') as string;
     const optionDetails = formData.get('optionDetails') as string;
-    const totalPrice = Number(formData.get('totalPrice')) || 0;
-    
+    // 🔒 セキュリティ修正: 以前はここでブラウザ（embed.js）が計算した totalPrice を
+    // そのまま信用してDBに保存していた。これだと注文フォームに手を加えれば
+    // 誰でも任意の金額で注文できてしまうため、DBに保存する金額は必ず下記の
+    // サーバー側再計算（computeEmbedOrderTotal）の結果を使う。クライアントの
+    // 値はログ・不整合検知用の参考値としてのみ保持する。
+    const clientReportedTotalPrice = Number(formData.get('totalPrice')) || 0;
+    const itemType = (formData.get('itemType') as string) || '';
+
     // 追加・ファイル関連の取得
     const animationType = (formData.get('animationType') as string) || 'none';
     const templateId = formData.get('templateId') as string | null;
@@ -26,10 +33,32 @@ export async function POST(request: Request) {
     const processedFile = formData.get('processedFile') as File | null;
     const mindFile = formData.get('mindFile') as File | null;
     const targetImageFile = formData.get('targetImageFile') as File | null;
+    const albumFiles = formData.getAll('albumFiles');
 
     const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
 
+    // arMode / imageType / displayOption / isAnimated は、クライアントの自己申告では
+    // なく、実際に送られてきたファイルや値から「サーバー自身が」判定する
+    // （itemType＝商品名だけは他から導出できないためクライアントから受け取るが、
+    // 未知の商品名が来た場合は基本料金0円として扱われるだけで、安全側に倒れる）。
     let arMode = mindFile ? 'mindar' : 'hiro';
+    const imageType: 'テンプレート' | 'アップロード' = templateId ? 'テンプレート' : 'アップロード';
+    const displayOption: 'single' | 'album' = albumFiles.length > 0 ? 'album' : 'single';
+    const isAnimated = animationType !== 'none';
+
+    const { data: settingsRows } = await supabase.from('system_settings').select('key, value');
+    const pricing = computeEmbedOrderTotal((settingsRows as any) || [], {
+      itemType,
+      arMode: arMode === 'mindar' ? 'mindar' : 'hiro',
+      imageType,
+      displayOption,
+      isAnimated,
+    });
+    const totalPrice = pricing.total;
+    if (Math.abs(totalPrice - clientReportedTotalPrice) > 0) {
+      console.warn(`[embed-order] price mismatch: client=${clientReportedTotalPrice} server=${totalPrice} itemType="${itemType}"`);
+    }
+
     let targetImageUrl = null;
     let mindFileUrl = null;
 
@@ -112,8 +141,7 @@ export async function POST(request: Request) {
         });
       }
 
-      // アルバム機能（2枚目以降の画像）の処理
-      const albumFiles = formData.getAll('albumFiles');
+      // アルバム機能（2枚目以降の画像）の処理（albumFilesは冒頭で取得済み）
       if (albumFiles && albumFiles.length > 0) {
         for (const file of albumFiles) {
           const f = file as File;
