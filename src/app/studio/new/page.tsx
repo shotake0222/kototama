@@ -211,7 +211,18 @@ export default function StudioNewItemPage() {
         })
         .select()
         .single();
-      if (itemError) throw itemError;
+      // 🆕 ar_itemsへのinsertは、件数上限（007番migration）や容量上限
+      // （008番migration）のDBトリガーによって拒否されることがある。その場合、
+      // 既にストレージへアップロード済みのファイルが孤児として残ってしまうため、
+      // 失敗時はアップロード済みファイルを削除してから元のエラーを投げ直す。
+      if (itemError) {
+        await Promise.all([
+          supabase.storage.from('user_ar_assets').remove([targetPath]),
+          supabase.storage.from('user_ar_assets').remove([mindPath]),
+          supabase.storage.from('user_ar_assets').remove([displayPath]),
+        ]).catch(() => {});
+        throw itemError;
+      }
 
       const { error: assetError } = await supabase.from('ar_item_assets').insert({
         ar_item_id: item.id,
@@ -220,7 +231,25 @@ export default function StudioNewItemPage() {
         sort_order: 0,
         metadata,
       });
-      if (assetError) throw assetError;
+      if (assetError) {
+        await Promise.all([
+          supabase.storage.from('user_ar_assets').remove([targetPath]),
+          supabase.storage.from('user_ar_assets').remove([mindPath]),
+          supabase.storage.from('user_ar_assets').remove([displayPath]),
+        ]).catch(() => {});
+        try {
+          await supabase.from('ar_items').delete().eq('id', item.id);
+        } catch { /* ベストエフォート。失敗しても元のエラーは投げ直す */ }
+        throw assetError;
+      }
+
+      // 🆕 運営への審査依頼通知メール。失敗してもAR作成自体は成功として扱う
+      // （fire-and-forget。他のメール送信箇所と同じ方針）。
+      fetch('/api/studio-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hashId }),
+      }).catch((err) => console.warn('審査依頼通知の送信に失敗しました', err));
 
       router.push('/studio');
     } catch (err: any) {
