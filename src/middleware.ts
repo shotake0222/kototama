@@ -35,9 +35,19 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Phase 1: /studio 以下（ユーザー基準CMS）も、ログイン画面自身を除いて
+  // 未ログインなら /studio/login へリダイレクトする。/admin と同じ
+  // Supabase Authセッションを見るが、admin_usersでの権限区別はしない
+  // （/studioは一般ユーザー向けのため、ログインさえしていれば入れる）。
+  if (request.nextUrl.pathname.startsWith('/studio') && !request.nextUrl.pathname.startsWith('/studio/login')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/studio/login', request.url))
+    }
+  }
+
   return response
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*', '/studio/:path*'],
 }
