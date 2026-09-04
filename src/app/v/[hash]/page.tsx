@@ -17,6 +17,9 @@ export const dynamic = 'force-dynamic';
 // 署名付きURL（createSignedUrl）で配布する。RLSポリシー（005番migration）で
 // 「status='published' かつ moderation_status='approved'」の行だけが
 // anonキーから参照できるようにしてあるため、それ以外のARはここで404になる。
+//
+// asset_type によって image / video / model の3種類を描画する
+// （Phase 2で動画、Phase 3で3Dモデルに対応）。
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,8 +62,48 @@ export default async function StudioViewerPage({ params }: { params: { hash: str
     .eq('id', item.id)
     .then(() => {}, () => {});
 
+  const assetType: 'image' | 'video' | 'model' = asset.asset_type || 'image';
   const finalScale = (item.object_scale || 1.0) * 4.0;
-  const animationAttribute = (ANIMATION_ATTR[item.animation_type] || ANIMATION_ATTR.none)(finalScale);
+  // 動画・3Dモデルにはアニメーション属性を適用しない（Phase 2/3ではひとまず画像のみ対応の範囲。
+  // /studio/new側でもUI上disabledにしている）
+  const animationAttribute = assetType === 'image' ? (ANIMATION_ATTR[item.animation_type] || ANIMATION_ATTR.none)(finalScale) : '';
+
+  let contentHtml = '';
+  if (assetType === 'video') {
+    // iOSでも自動再生できるよう muted + playsinline を必須にし、マーカー検出時にのみ再生する。
+    contentHtml = `
+    <a-assets>
+      <video id="ar-video" src="${displaySigned.signedUrl}" crossorigin="anonymous" loop muted playsinline webkit-playsinline preload="auto"></video>
+    </a-assets>
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-video src="#ar-video" position="0 0 0" scale="${finalScale} ${finalScale} ${finalScale}" rotation="0 0 0"></a-video>
+    </a-entity>
+    <script>
+      const targetEl = document.querySelector('#target');
+      const videoEl = document.querySelector('#ar-video');
+      targetEl.addEventListener('targetFound', () => { videoEl.play().catch(() => {}); });
+      targetEl.addEventListener('targetLost', () => { videoEl.pause(); });
+    </script>`;
+  } else if (assetType === 'model') {
+    const metadata = asset.metadata || {};
+    const offset = Array.isArray(metadata.offset) ? metadata.offset : [0, 0, 0];
+    const normalizedScale = typeof metadata.normalizedScale === 'number' ? metadata.normalizedScale : 1;
+    const modelScale = normalizedScale * finalScale;
+    contentHtml = `
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-entity position="0 0 0" scale="${modelScale} ${modelScale} ${modelScale}">
+        <a-entity gltf-model="url(${displaySigned.signedUrl})" position="${offset[0]} ${offset[1]} ${offset[2]}"></a-entity>
+      </a-entity>
+    </a-entity>`;
+  } else {
+    contentHtml = `
+    <a-assets>
+      <img id="ar-image" crossorigin="anonymous" src="${displaySigned.signedUrl}">
+    </a-assets>
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-image src="#ar-image" position="0 0 0" scale="${finalScale} ${finalScale} ${finalScale}" rotation="0 0 0" ${animationAttribute}></a-image>
+    </a-entity>`;
+  }
 
   const arHtml = `
 <!DOCTYPE html>
@@ -81,13 +124,8 @@ export default async function StudioViewerPage({ params }: { params: { hash: str
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
   >
-    <a-assets>
-      <img id="ar-image" crossorigin="anonymous" src="${displaySigned.signedUrl}">
-    </a-assets>
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-entity mindar-image-target="targetIndex: 0">
-      <a-image src="#ar-image" position="0 0 0" scale="${finalScale} ${finalScale} ${finalScale}" rotation="0 0 0" ${animationAttribute}></a-image>
-    </a-entity>
+    ${contentHtml}
   </a-scene>
 </body>
 </html>

@@ -77,11 +77,15 @@ export default function StudioItemsModerationPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {items.map((item) => {
               const thumbUrl = thumbUrls[item.id];
+              const assetType = item.ar_item_assets?.[0]?.asset_type || 'image';
               return (
                 <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-2">
                   <div className="w-full aspect-square bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center text-xs text-gray-400">
-                    {thumbUrl ? <img src={thumbUrl} alt={item.title || 'AR'} className="w-full h-full object-cover" /> : '画像なし'}
+                    {assetType === 'image' && thumbUrl ? (
+                      <img src={thumbUrl} alt={item.title || 'AR'} className="w-full h-full object-cover" />
+                    ) : assetType === 'video' ? '🎬 動画' : assetType === 'model' ? '🧊 3Dモデル' : '画像なし'}
                   </div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">{assetType}</div>
                   <div className="font-bold text-sm truncate">{item.title || '(無題)'}</div>
                   <div className="text-xs text-gray-400 font-mono">{item.hash_id}</div>
                   <div className="flex gap-2">

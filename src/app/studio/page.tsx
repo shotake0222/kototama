@@ -80,11 +80,16 @@ export default function StudioDashboardPage() {
               const origin = typeof window !== 'undefined' ? window.location.origin : '';
               const viewUrl = `${origin}/v/${item.hash_id}`;
               const thumb = thumbUrls[item.id];
+              const assetType = item.ar_item_assets?.[0]?.asset_type || 'image';
               return (
                 <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-2">
                   <div className="w-full aspect-square bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
-                    {thumb ? (
+                    {assetType === 'image' && thumb ? (
                       <img src={thumb} alt={item.title || 'AR'} className="w-full h-full object-cover" />
+                    ) : assetType === 'video' ? (
+                      <span className="text-gray-400 text-xs">🎬 動画</span>
+                    ) : assetType === 'model' ? (
+                      <span className="text-gray-400 text-xs">🧊 3Dモデル</span>
                     ) : (
                       <span className="text-gray-300 text-xs">画像なし</span>
                     )}

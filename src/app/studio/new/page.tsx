@@ -5,7 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import Script from 'next/script';
 import { createClient } from '@/utils/supabase/client';
 
-// ユーザーが自分でARを作成する画面（Phase 1: 画像のみ対応。動画・3Dモデルは後続フェーズ）。
+// ユーザーが自分でARを作成する画面。
+// Phase 1で画像のみ対応していたところに、Phase 2（動画）・Phase 3（3Dモデル）を追加。
 //
 // ここは admin/dashboard や OemPortal と同じく、ブラウザから直接Supabaseに
 // 書き込む方式にしている。/api/order のようにサーバーAPIを挟んでいないのは、
@@ -16,17 +17,84 @@ import { createClient } from '@/utils/supabase/client';
 // RLSそのものを信頼境界として使うのが妥当と判断したため。
 // ※ 005番のRLSポリシーが未適用の環境では、この画面は動作しない
 //   （anonキーからの書き込みが拒否される）点に注意。
+
+type DisplayType = 'image' | 'video' | 'model';
+
+const MAX_SIZE_BYTES: Record<DisplayType, number> = {
+  image: 10 * 1024 * 1024,
+  video: 50 * 1024 * 1024,
+  model: 20 * 1024 * 1024,
+};
+
+const ACCEPT: Record<DisplayType, string> = {
+  image: 'image/png, image/jpeg, image/webp',
+  video: 'video/mp4',
+  model: '.glb,.gltf,model/gltf-binary',
+};
+
+let threeLoaderPromise: Promise<void> | null = null;
+function loadThreeAndGltfLoader(): Promise<void> {
+  if (threeLoaderPromise) return threeLoaderPromise;
+  threeLoaderPromise = new Promise((resolve, reject) => {
+    const loadScript = (src: string) =>
+      new Promise<void>((res, rej) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = () => res();
+        s.onerror = () => rej(new Error(`failed to load ${src}`));
+        document.head.appendChild(s);
+      });
+
+    loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js')
+      .then(() => loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js'))
+      .then(() => resolve())
+      .catch(reject);
+  });
+  return threeLoaderPromise;
+}
+
+// アップロードされたglTF/GLBのバウンディングボックスを計算し、
+// 「中心を原点に、最大辺が1.0になる」ための正規化パラメータを返す。
+// ユーザーが作った3Dモデルは原点位置・スケールがバラバラなため、
+// これをやらないとAR上での見え方がモデルごとにバラついてしまう。
+async function computeModelNormalization(file: File): Promise<{ offset: [number, number, number]; normalizedScale: number }> {
+  await loadThreeAndGltfLoader();
+  // @ts-ignore
+  const THREE = window.THREE;
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const loader = new THREE.GLTFLoader();
+    const gltf: any = await new Promise((resolve, reject) => {
+      loader.load(objectUrl, resolve, undefined, reject);
+    });
+    const box = new THREE.Box3().setFromObject(gltf.scene);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    return {
+      offset: [-center.x, -center.y, -center.z],
+      normalizedScale: 1 / maxDim,
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export default function StudioNewItemPage() {
   const supabase = createClient();
   const router = useRouter();
 
   const [title, setTitle] = useState('');
   const [targetFile, setTargetFile] = useState<File | null>(null);
+  const [displayType, setDisplayType] = useState<DisplayType>('image');
   const [displayFile, setDisplayFile] = useState<File | null>(null);
   const [scale, setScale] = useState(1.0);
   const [animationType, setAnimationType] = useState('none');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [progressLabel, setProgressLabel] = useState('作成する');
 
   const compileImageToMind = async (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -48,10 +116,19 @@ export default function StudioNewItemPage() {
     });
   };
 
+  const handleDisplayFileChange = (file: File | null) => {
+    if (file && file.size > MAX_SIZE_BYTES[displayType]) {
+      const maxMb = Math.round(MAX_SIZE_BYTES[displayType] / (1024 * 1024));
+      alert(`ファイルサイズが大きすぎます（上限 ${maxMb}MB）。`);
+      return;
+    }
+    setDisplayFile(file);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetFile || !displayFile) {
-      setErrorMessage('マーカーになる画像と、浮かび上がる画像の両方をアップロードしてください。');
+      setErrorMessage('マーカーになる画像と、表示するコンテンツの両方をアップロードしてください。');
       setStatus('error');
       return;
     }
@@ -66,11 +143,26 @@ export default function StudioNewItemPage() {
       const hashId = uuidv4().replace(/-/g, '').substring(0, 16);
       const basePath = `${user.id}/${hashId}`;
 
+      setProgressLabel('マーカーを解析中...（数十秒かかります）');
       const mindBlob = await compileImageToMind(targetFile);
       const targetExt = targetFile.name.split('.').pop() || 'jpg';
       const targetPath = `${basePath}/target.${targetExt}`;
       const mindPath = `${basePath}/target.mind`;
-      const displayExt = displayFile.name.split('.').pop() || 'jpg';
+
+      // 表示コンテンツの種類に応じたメタデータ（3Dモデルのみ正規化情報を持つ）
+      let metadata: Record<string, any> = {};
+      if (displayType === 'model') {
+        setProgressLabel('3Dモデルを解析中...');
+        try {
+          const norm = await computeModelNormalization(displayFile);
+          metadata = { offset: norm.offset, normalizedScale: norm.normalizedScale };
+        } catch (err) {
+          console.warn('3Dモデルの解析に失敗しました。正規化なしで登録します。', err);
+        }
+      }
+
+      setProgressLabel('アップロード中...');
+      const displayExt = displayFile.name.split('.').pop() || (displayType === 'video' ? 'mp4' : displayType === 'model' ? 'glb' : 'jpg');
       const displayPath = `${basePath}/display.${displayExt}`;
 
       const uploads = await Promise.all([
@@ -101,9 +193,10 @@ export default function StudioNewItemPage() {
 
       const { error: assetError } = await supabase.from('ar_item_assets').insert({
         ar_item_id: item.id,
-        asset_type: 'image',
+        asset_type: displayType,
         storage_path: displayPath,
         sort_order: 0,
+        metadata,
       });
       if (assetError) throw assetError;
 
@@ -112,6 +205,7 @@ export default function StudioNewItemPage() {
       console.error(err);
       setErrorMessage(err.message || 'エラーが発生しました。');
       setStatus('error');
+      setProgressLabel('作成する');
     }
   };
 
@@ -137,8 +231,38 @@ export default function StudioNewItemPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">浮かび上がる画像</label>
-              <input required type="file" accept="image/png, image/jpeg" onChange={(e) => setDisplayFile(e.target.files?.[0] || null)} className="w-full border p-2 rounded" />
+              <label className="block text-sm font-medium mb-1">表示コンテンツの種類</label>
+              <div className="flex gap-2">
+                {(['image', 'video', 'model'] as DisplayType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setDisplayType(t); setDisplayFile(null); }}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-bold border transition ${displayType === t ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-gray-500 border-gray-200'}`}
+                  >
+                    {t === 'image' ? '画像' : t === 'video' ? '動画' : '3Dモデル'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                {displayType === 'image' ? '浮かび上がる画像' : displayType === 'video' ? '再生する動画（MP4、上限50MB）' : '表示する3Dモデル（glTF/GLB、上限20MB）'}
+              </label>
+              <input
+                required
+                type="file"
+                accept={ACCEPT[displayType]}
+                onChange={(e) => handleDisplayFileChange(e.target.files?.[0] || null)}
+                className="w-full border p-2 rounded"
+              />
+              {displayType === 'video' && (
+                <p className="text-xs text-gray-400 mt-1">iOSでも自動再生できるよう、音声なし（ミュート）で再生されます。</p>
+              )}
+              {displayType === 'model' && (
+                <p className="text-xs text-gray-400 mt-1">モデルの大きさ・位置は自動で調整されます（下の「サイズ倍率」でさらに微調整できます）。</p>
+              )}
             </div>
 
             <div>
@@ -147,8 +271,8 @@ export default function StudioNewItemPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">アニメーション</label>
-              <select value={animationType} onChange={(e) => setAnimationType(e.target.value)} className="w-full border p-2 rounded">
+              <label className="block text-sm font-medium mb-1">アニメーション{displayType !== 'image' && <span className="text-gray-400 font-normal">（動画・3Dモデルには適用されません）</span>}</label>
+              <select value={animationType} onChange={(e) => setAnimationType(e.target.value)} disabled={displayType !== 'image'} className="w-full border p-2 rounded disabled:bg-gray-100 disabled:text-gray-400">
                 <option value="none">なし</option>
                 <option value="pulse">ふわふわ</option>
                 <option value="float">浮遊</option>
@@ -164,7 +288,7 @@ export default function StudioNewItemPage() {
               disabled={status === 'submitting'}
               className="w-full bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white p-3 rounded font-bold transition"
             >
-              {status === 'submitting' ? '作成中...（マーカー解析に数十秒かかります）' : '作成する'}
+              {status === 'submitting' ? progressLabel : '作成する'}
             </button>
           </form>
         </div>
