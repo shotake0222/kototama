@@ -86,9 +86,28 @@ export async function POST(request: Request) {
 
     // ==========================================
     // 2. 金額の再計算（クライアントから金額を受け取らない）
+    // 🐛 バグ修正（デバッグフェーズ）: OrderForm.tsx（ブラウザ側）は表示金額の計算時に
+    // system_settings に client_settings（OEM提供先ごとの料金上書き）をマージしているが、
+    // ここではこれまで system_settings のみを見ており、サーバーが再計算する正規金額に
+    // OEM提供先の料金上書きが一切反映されていなかった。これだとOEM提供先ごとに
+    // カスタム料金を設定しても、画面には反映されて見える一方で実際の請求額は
+    // 常にグローバル料金になってしまう（表示と実際の請求が食い違う）。
+    // OrderForm.tsx と同じ優先順位（clientの上書きが勝つ）でマージしてから計算する。
     // ==========================================
-    const { data: settingsRows } = await supabase.from('system_settings').select('key, value');
-    const pricing = computeDirectOrderTotal((settingsRows as any) || [], { hasCharm, hasKeyRing });
+    const { data: globalSettingsRows } = await supabase.from('system_settings').select('key, value');
+    const settingsMap = new Map<string, string>();
+    (globalSettingsRows || []).forEach((row: any) => settingsMap.set(row.key, row.value));
+
+    if (clientId) {
+      const { data: overrideRows } = await supabase
+        .from('client_settings')
+        .select('key, value')
+        .eq('client_id', clientId);
+      (overrideRows || []).forEach((row: any) => settingsMap.set(row.key, row.value));
+    }
+
+    const settingsRows = Array.from(settingsMap.entries()).map(([key, value]) => ({ key, value }));
+    const pricing = computeDirectOrderTotal(settingsRows, { hasCharm, hasKeyRing });
     const totalPrice = pricing.total;
 
     // ==========================================

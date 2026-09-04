@@ -203,7 +203,7 @@ function OrderFormInner({ clientId: clientIdProp }: { clientId?: string }) {
 
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       setTotalPrice(result.totalPrice ?? totalPrice);
-      setHashUrl(`${origin}/ar/${result.hashId}`);
+      setHashUrl(`${origin}/ar?uid=${result.hashId}`);
       setStatus('success');
     } catch (error) {
       console.error(error);
