@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
 import Script from 'next/script';
@@ -800,6 +801,7 @@ export default function Dashboard() {
             <button onClick={() => setActiveTab('clients')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'clients' ? 'bg-purple-600 text-white shadow-lg transform -translate-y-1' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>🏢 OEM提供先管理</button>
             <button onClick={() => setActiveTab('bulk')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'bulk' ? 'bg-green-600 text-white shadow-lg transform -translate-y-1' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📁 一括発注処理</button>
             <button onClick={() => setActiveTab('emails')} className={`px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap ${activeTab === 'emails' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>📧 メール配信</button>
+            <Link href="/admin/studio-items" className="px-6 py-3 font-bold rounded-t-lg transition whitespace-nowrap bg-gray-100 text-gray-500 hover:bg-gray-200">🧩 スタジオCMS審査</Link>
           </div>
 
           {activeTab === 'orders' && (
