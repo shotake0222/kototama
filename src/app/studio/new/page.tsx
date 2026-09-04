@@ -32,24 +32,35 @@ const ACCEPT: Record<DisplayType, string> = {
   model: '.glb,.gltf,model/gltf-binary',
 };
 
-let threeLoaderPromise: Promise<void> | null = null;
-function loadThreeAndGltfLoader(): Promise<void> {
+// 🐛 バグ修正（デバッグフェーズ）: 以前はUMD版の three.min.js を <script> タグで
+// 読み込んだ後、続けて examples/js/loaders/GLTFLoader.js を <script> タグで
+// 読み込んでいたが、three.js は r150（npmのバージョン表記で 0.150.0）以降、
+// examples/js 配下の非ESM（レガシー）ローダー群を完全に削除しており、
+// examples/js/loaders/GLTFLoader.js は現在ピン留めしているバージョン
+// （0.160.0）には存在しない（読み込みが404で失敗する）。このため
+// これまで3Dモデルをアップロードするたびに正規化処理が必ず失敗し、
+// UIでは「大きさ・位置は自動で調整される」と案内しているにもかかわらず、
+// 常に無言で正規化なし（handleSubmit内のcatchでエラーを握りつぶし、
+// metadataを空のまま登録）にフォールバックしていた。
+// 現在配布されているのはESM版のローダーのみのため、jsDelivrの `+esm`
+// （内部の import 文をCDN上のURLに解決した状態でESMをそのまま配信して
+// くれる機能）を使い、ブラウザネイティブの動的importで読み込む。
+// webpackIgnore コメントは、webpack（Next.jsのバンドラ）が実行時URLの
+// import() をビルド時に解決しようとして失敗するのを防ぐためのもの。
+const THREE_VERSION = '0.160.0';
+type ThreeModules = { THREE: any; GLTFLoader: any };
+let threeLoaderPromise: Promise<ThreeModules> | null = null;
+function loadThreeAndGltfLoader(): Promise<ThreeModules> {
   if (threeLoaderPromise) return threeLoaderPromise;
-  threeLoaderPromise = new Promise((resolve, reject) => {
-    const loadScript = (src: string) =>
-      new Promise<void>((res, rej) => {
-        const s = document.createElement('script');
-        s.src = src;
-        s.onload = () => res();
-        s.onerror = () => rej(new Error(`failed to load ${src}`));
-        document.head.appendChild(s);
-      });
-
-    loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js')
-      .then(() => loadScript('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js'))
-      .then(() => resolve())
-      .catch(reject);
-  });
+  threeLoaderPromise = (async () => {
+    const THREE: any = await import(
+      /* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/+esm`
+    );
+    const gltfModule: any = await import(
+      /* webpackIgnore: true */ `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/examples/jsm/loaders/GLTFLoader.js/+esm`
+    );
+    return { THREE, GLTFLoader: gltfModule.GLTFLoader };
+  })();
   return threeLoaderPromise;
 }
 
@@ -58,12 +69,10 @@ function loadThreeAndGltfLoader(): Promise<void> {
 // ユーザーが作った3Dモデルは原点位置・スケールがバラバラなため、
 // これをやらないとAR上での見え方がモデルごとにバラついてしまう。
 async function computeModelNormalization(file: File): Promise<{ offset: [number, number, number]; normalizedScale: number }> {
-  await loadThreeAndGltfLoader();
-  // @ts-ignore
-  const THREE = window.THREE;
+  const { THREE, GLTFLoader } = await loadThreeAndGltfLoader();
   const objectUrl = URL.createObjectURL(file);
   try {
-    const loader = new THREE.GLTFLoader();
+    const loader = new GLTFLoader();
     const gltf: any = await new Promise((resolve, reject) => {
       loader.load(objectUrl, resolve, undefined, reject);
     });
@@ -162,13 +171,26 @@ export default function StudioNewItemPage() {
       }
 
       setProgressLabel('アップロード中...');
-      const displayExt = displayFile.name.split('.').pop() || (displayType === 'video' ? 'mp4' : displayType === 'model' ? 'glb' : 'jpg');
+      const displayExt = (displayFile.name.split('.').pop() || (displayType === 'video' ? 'mp4' : displayType === 'model' ? 'glb' : 'jpg')).toLowerCase();
       const displayPath = `${basePath}/display.${displayExt}`;
 
+      // 🐛 バグ修正（デバッグフェーズ）: これまでアップロード時のMIMEタイプを
+      // File.typeブラウザ判定に任せていたが、.glb/.gltfはOS・ブラウザによって
+      // 空文字列など不定の値になることがあり、006番migrationで設定した
+      // バケットのallowed_mime_typesと一致せずアップロード自体が拒否される
+      // ケースがあった（3Dモデルの種類によっては再現しないため気づきにくい）。
+      // 拡張子から明示的にcontentTypeを指定し、ブラウザの判定に依存しないようにする。
+      const displayContentType =
+        displayType === 'video'
+          ? 'video/mp4'
+          : displayType === 'model'
+          ? (displayExt === 'gltf' ? 'model/gltf+json' : 'model/gltf-binary')
+          : displayFile.type || 'image/jpeg';
+
       const uploads = await Promise.all([
-        supabase.storage.from('user_ar_assets').upload(targetPath, targetFile),
-        supabase.storage.from('user_ar_assets').upload(mindPath, mindBlob),
-        supabase.storage.from('user_ar_assets').upload(displayPath, displayFile),
+        supabase.storage.from('user_ar_assets').upload(targetPath, targetFile, { contentType: targetFile.type || 'image/jpeg' }),
+        supabase.storage.from('user_ar_assets').upload(mindPath, mindBlob, { contentType: 'application/octet-stream' }),
+        supabase.storage.from('user_ar_assets').upload(displayPath, displayFile, { contentType: displayContentType }),
       ]);
       const uploadError = uploads.find((u) => u.error)?.error;
       if (uploadError) throw uploadError;

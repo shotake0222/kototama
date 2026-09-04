@@ -96,21 +96,34 @@ create policy "ar_item_moderation_log_owner_select" on ar_item_moderation_log fo
   using (exists (select 1 from ar_items i where i.id = ar_item_moderation_log.ar_item_id and i.owner_id = auth.uid()));
 
 -- storage.objects 側のポリシー（user_ar_assetsバケットのみ対象）。
--- パス構成は user_ar_assets/{owner_id}/{ar_item_id}/{asset_id}.{ext} を前提にしている。
+-- 実際のパス構成は user_ar_assets/{owner_id}/{hash_id}/{ファイル名} （1番目=所有者のuser_id、
+-- 2番目=ar_items.hash_id）。owner_idはUUID形式で一致するため、このポリシーはキャスト不要。
 create policy "user_ar_assets_owner_all" on storage.objects for all
   using (bucket_id = 'user_ar_assets' and (storage.foldername(name))[1] = auth.uid()::text)
   with check (bucket_id = 'user_ar_assets' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- バケット自体はpublic=falseだが、公開・承認済みのar_itemに属するファイルだけは
 -- 誰でも参照できるようにする（/v/[hash] ビューアが画像を表示するため）。
--- パス構成 user_ar_assets/{owner_id}/{ar_item_id}/{asset_id}.{ext} を前提に、
--- 2番目のフォルダ名(=ar_item_id)からar_itemsを引いて判定する。
+--
+-- 🐛 バグ修正（デバッグフェーズ）: このコメント・当初のポリシーは
+-- パス構成を user_ar_assets/{owner_id}/{ar_item_id}/{asset_id}.{ext}
+-- （2番目のフォルダ名 = ar_items.id のUUID）と想定して
+-- ((storage.foldername(name))[2])::uuid でキャストしていたが、
+-- 実際の src/app/studio/new/page.tsx の実装は
+-- `${user.id}/${hashId}/target.ext` のように、2番目のフォルダ名として
+-- ar_items.hash_id（uuidv4を16文字に切り詰めたハイフン無し文字列。
+-- 正規のUUID形式ではない）を使っている。そのため元のポリシーのまま
+-- RLSを有効化すると、匿名ユーザーが/v/[hash]を開くたびにこのポリシーの
+-- 評価で「invalid input syntax for type uuid」エラーが発生し、
+-- 公開ARの署名付きURL取得が常に失敗する（=公開ビューアが機能しない）
+-- 致命的な不具合だった。hash_id は text 型なのでキャストせずに
+-- 直接比較する。
 create policy "user_ar_assets_public_select_published" on storage.objects for select
   using (
     bucket_id = 'user_ar_assets'
     and exists (
       select 1 from ar_items i
-      where i.id = ((storage.foldername(name))[2])::uuid
+      where i.hash_id = (storage.foldername(name))[2]
         and i.status = 'published' and i.moderation_status = 'approved'
     )
   );
